@@ -24,7 +24,7 @@ class Supplier
     #[ORM\Column(length: 20, nullable: true)]
     private ?string $phone = null;
 
-    #[ORM\OneToMany(mappedBy: 'supplier', targetEntity: Piece::class)]
+    #[ORM\OneToMany(mappedBy: 'supplier', targetEntity: Part::class)]
     private Collection $pieces;
 
     public function __construct()
@@ -74,7 +74,7 @@ class Supplier
     }
 
     /**
-     * @return Collection<int, Piece>
+     * @return Collection<int, Part>
      */
     public function getPieces(): Collection
     {
