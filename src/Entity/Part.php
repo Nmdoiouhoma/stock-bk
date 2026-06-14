@@ -7,8 +7,11 @@ use App\Repository\PartRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: PartRepository::class)]
+#[UniqueEntity(fields: ['reference'], message: 'Cette référence est déjà utilisée.')]
 class Part
 {
     #[ORM\Id]
@@ -17,21 +20,29 @@ class Part
     private ?int $id = null;
 
     #[ORM\Column(length: 50, unique: true)]
+    #[Assert\NotBlank]
+    #[Assert\Length(max: 50)]
     private ?string $reference = null;
 
     #[ORM\Column(length: 255)]
+    #[Assert\NotBlank]
+    #[Assert\Length(max: 255)]
     private ?string $label = null;
 
     #[ORM\Column(type: 'string', enumType: PieceType::class)]
+    #[Assert\NotNull]
     private ?PieceType $type = null;
 
     #[ORM\Column(type: 'float', nullable: true)]
+    #[Assert\PositiveOrZero]
     private ?float $salePrice = null;
 
     #[ORM\Column(type: 'integer')]
+    #[Assert\PositiveOrZero]
     private int $stockQuantity = 0;
 
     #[ORM\Column(type: 'integer')]
+    #[Assert\PositiveOrZero]
     private int $stockMin = 0;
 
     #[ORM\ManyToOne(inversedBy: 'pieces')]
