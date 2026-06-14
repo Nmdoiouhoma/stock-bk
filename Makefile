@@ -3,10 +3,13 @@ PHP = $(DOCKER_COMPOSE) exec app php
 COMPOSER = $(DOCKER_COMPOSE) exec app composer
 CONSOLE = $(PHP) bin/console
 
+PHP_LOCAL = php
+CONSOLE_LOCAL = $(PHP_LOCAL) bin/console
+
 .DEFAULT_GOAL = help
 .PHONY: help build up down restart logs shell \
         install cc migrate diff fixtures \
-        test lint stan
+        test test-db lint stan
 
 ##@ Docker
 build: ## Build images
@@ -47,8 +50,15 @@ fixtures: ## Load fixtures
 	$(CONSOLE) doctrine:fixtures:load --no-interaction
 
 ##@ Quality
-test: ## Run tests
-	$(DOCKER_COMPOSE) exec app php bin/phpunit
+test: ## Run tests (crée/met à jour le schéma de test si besoin + phpunit)
+	$(CONSOLE_LOCAL) --env=test doctrine:database:create --if-not-exists
+	$(CONSOLE_LOCAL) --env=test doctrine:schema:update --force --complete
+	$(PHP_LOCAL) bin/phpunit
+
+test-db: ## Recréer la BDD de test from scratch
+	$(CONSOLE_LOCAL) --env=test doctrine:database:drop --force --if-exists
+	$(CONSOLE_LOCAL) --env=test doctrine:database:create
+	$(CONSOLE_LOCAL) --env=test doctrine:schema:create
 
 lint: ## Lint twig & yaml
 	$(CONSOLE) lint:twig templates/
