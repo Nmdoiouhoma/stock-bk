@@ -97,10 +97,10 @@ class PartController extends AbstractController
         }
 
         if (array_key_exists('reference', $data)) {
-            $part->setReference($data['reference']);
+            $part->setReference((string) $data['reference']);
         }
         if (array_key_exists('label', $data)) {
-            $part->setLabel($data['label']);
+            $part->setLabel((string) $data['label']);
         }
         if (array_key_exists('type', $data)) {
             $type = $this->resolveType($data['type']);

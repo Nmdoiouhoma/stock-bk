@@ -3,30 +3,80 @@
 namespace App\Tests\Controller;
 
 use App\Entity\Part;
+use App\Entity\User;
 use App\Enum\PieceType;
+use App\Enum\Role;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 class PartControllerTest extends WebTestCase
 {
     private KernelBrowser $client;
     private EntityManagerInterface $em;
 
-    private const REF_PREFIX = 'PTEST-';
+    private const REF_PREFIX    = 'PTEST-';
+    private const WORKER_EMAIL  = 'worker@ptest.com';
+    private const ADMIN_EMAIL   = 'admin@ptest.com';
+    private const TEST_PASSWORD = 'test_password';
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->client = static::createClient();
         $this->em = static::getContainer()->get(EntityManagerInterface::class);
+        $this->cleanTestUsers();
         $this->cleanTestParts();
+        $this->createTestUser(Role::Worker, self::WORKER_EMAIL);
+        $this->createTestUser(Role::Admin, self::ADMIN_EMAIL);
+        $this->loginAs(self::WORKER_EMAIL);
     }
 
     protected function tearDown(): void
     {
         $this->cleanTestParts();
+        $this->cleanTestUsers();
         parent::tearDown();
+    }
+
+    private function loginAs(string $email, string $password = self::TEST_PASSWORD): void
+    {
+        $this->client->request('POST', '/api/login', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'email'    => $email,
+            'password' => $password,
+        ]));
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $token = $data['token'] ?? null;
+        $this->assertNotNull($token, "Login failed for $email");
+
+        $this->client->setServerParameters([
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+        ]);
+    }
+
+    private function createTestUser(Role $role, string $email): void
+    {
+        /** @var UserPasswordHasherInterface $hasher */
+        $hasher = static::getContainer()->get(UserPasswordHasherInterface::class);
+        $user = (new User())
+            ->setFirstname('Test')
+            ->setLastname('User')
+            ->setEmail($email)
+            ->setRole($role);
+        $user->setPassword($hasher->hashPassword($user, self::TEST_PASSWORD));
+        $this->em->persist($user);
+        $this->em->flush();
+        $this->em->clear();
+    }
+
+    private function cleanTestUsers(): void
+    {
+        $this->em->createQuery(
+            'DELETE FROM App\Entity\User u WHERE u.email IN (:emails)'
+        )->setParameter('emails', [self::WORKER_EMAIL, self::ADMIN_EMAIL])->execute();
+        $this->em->clear();
     }
 
     private function cleanTestParts(): void
@@ -56,6 +106,25 @@ class PartControllerTest extends WebTestCase
         $this->em->clear();
 
         return $part;
+    }
+
+    // ── Authentication ───────────────────────────────────────
+
+    public function testUnauthenticatedRequestReturns401(): void
+    {
+        $this->client->setServerParameters([]);
+        $this->client->request('GET', '/api/parts');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testWorkerCannotDeleteReturns403(): void
+    {
+        $part = $this->createPart('001');
+
+        $this->client->request('DELETE', '/api/parts/' . $part->getId());
+
+        $this->assertResponseStatusCodeSame(403);
     }
 
     // ── GET /api/parts ───────────────────────────────────────
@@ -236,6 +305,23 @@ class PartControllerTest extends WebTestCase
         $this->assertSame(5, $data['stockMin']);           // unchanged
     }
 
+    public function testUpdateWithNullStringFieldReturnsUnprocessable(): void
+    {
+        $part = $this->createPart('001');
+
+        $this->client->request('PUT', '/api/parts/' . $part->getId(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'reference' => null,
+            'label'     => null,
+        ]));
+
+        $this->assertResponseStatusCodeSame(422);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('errors', $data);
+        $fields = array_column($data['errors'], 'field');
+        $this->assertContains('reference', $fields);
+        $this->assertContains('label', $fields);
+    }
+
     public function testUpdateWithInvalidJsonReturnsBadRequest(): void
     {
         $part = $this->createPart('001');
@@ -273,6 +359,7 @@ class PartControllerTest extends WebTestCase
     {
         $part = $this->createPart('001');
 
+        $this->loginAs(self::ADMIN_EMAIL);
         $this->client->request('DELETE', '/api/parts/' . $part->getId());
 
         $this->assertResponseStatusCodeSame(204);
@@ -283,15 +370,18 @@ class PartControllerTest extends WebTestCase
         $part = $this->createPart('001');
         $id = $part->getId();
 
+        $this->loginAs(self::ADMIN_EMAIL);
         $this->client->request('DELETE', '/api/parts/' . $id);
         $this->assertResponseStatusCodeSame(204);
 
+        $this->loginAs(self::WORKER_EMAIL);
         $this->client->request('GET', '/api/parts/' . $id);
         $this->assertResponseStatusCodeSame(404);
     }
 
     public function testDeleteReturns404ForUnknownPart(): void
     {
+        $this->loginAs(self::ADMIN_EMAIL);
         $this->client->request('DELETE', '/api/parts/999999');
 
         $this->assertResponseStatusCodeSame(404);
