@@ -9,6 +9,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 #[ORM\Entity(repositoryClass: PartRepository::class)]
 #[UniqueEntity(fields: ['reference'], message: 'Cette référence est déjà utilisée.')]
@@ -61,6 +62,59 @@ class Part
 
     #[ORM\OneToMany(mappedBy: 'childPart', targetEntity: BillOfMaterials::class)]
     private Collection $childBoms;
+
+    #[Assert\Callback]
+    public function validateByType(ExecutionContextInterface $context): void
+    {
+        if ($this->type === null) {
+            return;
+        }
+
+        $manufactured = [PieceType::Finished, PieceType::Intermediate];
+        $bought = [PieceType::RawMaterial, PieceType::Purchased];
+
+        if ($this->type === PieceType::Finished && $this->salePrice === null) {
+            $context->buildViolation('Le prix de vente est obligatoire pour une pièce finie.')
+                ->atPath('salePrice')
+                ->addViolation();
+        }
+
+        if (in_array($this->type, $manufactured, true) && $this->catalogPrice !== null) {
+            $context->buildViolation('Le prix catalogue doit être vide pour une pièce fabriquée.')
+                ->atPath('catalogPrice')
+                ->addViolation();
+        }
+
+        if (in_array($this->type, $manufactured, true) && $this->supplier !== null) {
+            $context->buildViolation('Un fournisseur ne peut pas être associé à une pièce fabriquée.')
+                ->atPath('supplier')
+                ->addViolation();
+        }
+
+        if ($this->type === PieceType::Intermediate && $this->salePrice !== null) {
+            $context->buildViolation('Une pièce intermédiaire ne peut pas avoir de prix de vente.')
+                ->atPath('salePrice')
+                ->addViolation();
+        }
+
+        if (in_array($this->type, $bought, true) && $this->catalogPrice === null) {
+            $context->buildViolation('Le prix catalogue est obligatoire pour une pièce achetée.')
+                ->atPath('catalogPrice')
+                ->addViolation();
+        }
+
+        if (in_array($this->type, $bought, true) && $this->supplier === null) {
+            $context->buildViolation('Le fournisseur est obligatoire pour une pièce achetée.')
+                ->atPath('supplier')
+                ->addViolation();
+        }
+
+        if (in_array($this->type, $bought, true) && !$this->routings->isEmpty()) {
+            $context->buildViolation('Une pièce achetée ne peut pas avoir de gamme de fabrication.')
+                ->atPath('routings')
+                ->addViolation();
+        }
+    }
 
     public function __construct()
     {
