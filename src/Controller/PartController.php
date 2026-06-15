@@ -12,9 +12,11 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/parts')]
+#[IsGranted('ROLE_WORKER')]
 class PartController extends AbstractController
 {
     #[Route('', name: 'part_index', methods: ['GET'])]
@@ -51,6 +53,7 @@ class PartController extends AbstractController
         $part->setLabel($data['label'] ?? '');
         $part->setType($type);
         $part->setSalePrice(isset($data['salePrice']) ? (float) $data['salePrice'] : null);
+        $part->setCatalogPrice(isset($data['catalogPrice']) ? (float) $data['catalogPrice'] : null);
         $part->setStockQuantity((int) ($data['stockQuantity'] ?? 0));
         $part->setStockMin((int) ($data['stockMin'] ?? 0));
 
@@ -112,6 +115,9 @@ class PartController extends AbstractController
         if (array_key_exists('salePrice', $data)) {
             $part->setSalePrice($data['salePrice'] !== null ? (float) $data['salePrice'] : null);
         }
+        if (array_key_exists('catalogPrice', $data)) {
+            $part->setCatalogPrice($data['catalogPrice'] !== null ? (float) $data['catalogPrice'] : null);
+        }
         if (array_key_exists('stockQuantity', $data)) {
             $part->setStockQuantity((int) $data['stockQuantity']);
         }
@@ -141,6 +147,7 @@ class PartController extends AbstractController
     }
 
     #[Route('/{id}', name: 'part_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function delete(Part $part, EntityManagerInterface $em): JsonResponse
     {
         $em->remove($part);
@@ -157,6 +164,7 @@ class PartController extends AbstractController
             'label'         => $part->getLabel(),
             'type'          => $part->getType()?->value,
             'salePrice'     => $part->getSalePrice(),
+            'catalogPrice'  => $part->getCatalogPrice(),
             'stockQuantity' => $part->getStockQuantity(),
             'stockMin'      => $part->getStockMin(),
             'supplier'      => $part->getSupplier() ? [

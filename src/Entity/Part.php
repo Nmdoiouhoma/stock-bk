@@ -49,6 +49,10 @@ class Part
     #[ORM\JoinColumn(nullable: true)]
     private ?Supplier $supplier = null;
 
+    #[ORM\Column(type: 'float', nullable: true)]
+    #[Assert\PositiveOrZero]
+    private ?float $catalogPrice = null;
+
     #[ORM\OneToMany(mappedBy: 'part', targetEntity: Routing::class)]
     private Collection $routings;
 
@@ -114,6 +118,18 @@ class Part
     public function setSalePrice(?float $salePrice): static
     {
         $this->salePrice = $salePrice;
+
+        return $this;
+    }
+
+    public function getCatalogPrice(): ?float
+    {
+        return $this->catalogPrice;
+    }
+
+    public function setCatalogPrice(?float $catalogPrice): static
+    {
+        $this->catalogPrice = $catalogPrice;
 
         return $this;
     }
