@@ -17,9 +17,17 @@ use App\Enum\PieceType;
 use App\Enum\Role;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 class AppFixtures extends Fixture
 {
+    private UserPasswordHasherInterface $hasher;
+
+    public function __construct(UserPasswordHasherInterface $hasher)
+    {
+        $this->hasher = $hasher;
+    }
+
     public function load(ObjectManager $manager): void
     {
         $suppliers   = $this->loadSuppliers($manager);
@@ -58,16 +66,22 @@ class AppFixtures extends Fixture
 
     private function loadUsers(ObjectManager $manager): void
     {
+        // format: firstname, lastname, email, role, plainPassword
         $data = [
-            ['Marie',   'Dupont',    'admin@atelier.fr',        Role::Admin],
-            ['Jean',    'Martin',    'jean.martin@atelier.fr',  Role::Worker],
-            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker],
-            ['Pierre',  'Bernard',   'client@exemple.fr',       Role::Customer],
-            ['Luc',     'Moreau',    'commercial@atelier.fr',   Role::Seller],
+            ['Marie',   'Dupont',    'admin@atelier.fr',        Role::Admin,    'AdminPass123!'],
+            ['Jean',    'Martin',    'jean.martin@atelier.fr',  Role::Worker,   'WorkerJean1!'],
+            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker,  'WorkerSophie2!'],
+            ['Pierre',  'Bernard',   'client@exemple.fr',       Role::Customer, 'ClientPierre!'],
+            ['Luc',     'Moreau',    'commercial@atelier.fr',   Role::Seller,   'SellerLuc!'],
         ];
 
-        foreach ($data as [$first, $last, $email, $role]) {
-            $u = (new User())->setFirstname($first)->setLastname($last)->setEmail($email)->setRole($role);
+        foreach ($data as [$first, $last, $email, $role, $plainPassword]) {
+            $u = (new User())
+                ->setFirstname($first)
+                ->setLastname($last)
+                ->setEmail($email)
+                ->setRole($role);
+            $u->setPassword($this->hasher->hashPassword($u, $plainPassword));
             $manager->persist($u);
         }
     }
