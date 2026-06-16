@@ -42,10 +42,6 @@ class Part
     #[Assert\PositiveOrZero]
     private int $stockQuantity = 0;
 
-    #[ORM\Column(type: 'integer')]
-    #[Assert\PositiveOrZero]
-    private int $stockMin = 0;
-
     #[ORM\ManyToOne(inversedBy: 'pieces')]
     #[ORM\JoinColumn(nullable: true)]
     private ?Supplier $supplier = null;
@@ -196,18 +192,6 @@ class Part
     public function setStockQuantity(int $stockQuantity): static
     {
         $this->stockQuantity = $stockQuantity;
-
-        return $this;
-    }
-
-    public function getStockMin(): int
-    {
-        return $this->stockMin;
-    }
-
-    public function setStockMin(int $stockMin): static
-    {
-        $this->stockMin = $stockMin;
 
         return $this;
     }
