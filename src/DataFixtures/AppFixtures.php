@@ -31,11 +31,11 @@ class AppFixtures extends Fixture
     public function load(ObjectManager $manager): void
     {
         $suppliers   = $this->loadSuppliers($manager);
-        $this->loadUsers($manager);
+        $supervisor  = $this->loadUsers($manager);
         $workstations = $this->loadWorkstations($manager);
         $machines    = $this->loadMachines($manager, $workstations);
         $parts       = $this->loadParts($manager, $suppliers);
-        $routings    = $this->loadRoutings($manager, $parts);
+        $routings    = $this->loadRoutings($manager, $parts, $supervisor);
         $operations  = $this->loadOperations($manager, $routings, $workstations, $machines);
         $this->loadBoms($manager, $parts);
         $this->loadForecasts($manager, $operations);
@@ -64,17 +64,19 @@ class AppFixtures extends Fixture
         return $suppliers;
     }
 
-    private function loadUsers(ObjectManager $manager): void
+    private function loadUsers(ObjectManager $manager): User
     {
         // format: firstname, lastname, email, role, plainPassword
         $data = [
-            ['Marie',   'Dupont',    'admin@atelier.fr',        Role::Admin,    'AdminPass123!'],
-            ['Jean',    'Martin',    'jean.martin@atelier.fr',  Role::Worker,   'WorkerJean1!'],
-            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker,  'WorkerSophie2!'],
-            ['Pierre',  'Bernard',   'client@exemple.fr',       Role::Customer, 'ClientPierre!'],
-            ['Luc',     'Moreau',    'commercial@atelier.fr',   Role::Seller,   'SellerLuc!'],
+            ['Marie',   'Dupont',    'admin@atelier.fr',          Role::Admin,      'AdminPass123!'],
+            ['Jean',    'Martin',    'jean.martin@atelier.fr',    Role::Worker,     'WorkerJean1!'],
+            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker,     'WorkerSophie2!'],
+            ['Pierre',  'Bernard',   'client@exemple.fr',         Role::Customer,   'ClientPierre!'],
+            ['Luc',     'Moreau',    'commercial@atelier.fr',     Role::Seller,     'SellerLuc!'],
+            ['Alice',   'Renard',    'supervisor@atelier.fr',     Role::Supervisor, 'SupervisorAlice!'],
         ];
 
+        $supervisor = null;
         foreach ($data as [$first, $last, $email, $role, $plainPassword]) {
             $u = (new User())
                 ->setFirstname($first)
@@ -83,7 +85,12 @@ class AppFixtures extends Fixture
                 ->setRole($role);
             $u->setPassword($this->hasher->hashPassword($u, $plainPassword));
             $manager->persist($u);
+            if ($role === Role::Supervisor) {
+                $supervisor = $u;
+            }
         }
+
+        return $supervisor;
     }
 
     /** @return Workstation[] */
@@ -166,7 +173,7 @@ class AppFixtures extends Fixture
     }
 
     /** @return Routing[] */
-    private function loadRoutings(ObjectManager $manager, array $parts): array
+    private function loadRoutings(ObjectManager $manager, array $parts, User $supervisor): array
     {
         [5 => $corpsVanne, 6 => $couvercle, 7 => $v100, 8 => $v50, 9 => $kit] = $parts;
 
@@ -180,7 +187,7 @@ class AppFixtures extends Fixture
 
         $routings = [];
         foreach ($data as [$ref, $label, $part]) {
-            $r = (new Routing())->setReference($ref)->setLabel($label)->setPart($part);
+            $r = (new Routing())->setReference($ref)->setLabel($label)->setPart($part)->setSupervisor($supervisor);
             $manager->persist($r);
             $routings[] = $r;
         }

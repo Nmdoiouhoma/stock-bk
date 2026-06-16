@@ -3,6 +3,7 @@
 namespace App\Tests\Controller;
 
 use App\Entity\Part;
+use App\Entity\Supplier;
 use App\Entity\User;
 use App\Enum\PieceType;
 use App\Enum\Role;
@@ -28,6 +29,7 @@ class PartControllerTest extends WebTestCase
         $this->em = static::getContainer()->get(EntityManagerInterface::class);
         $this->cleanTestUsers();
         $this->cleanTestParts();
+        $this->cleanTestSuppliers();
         $this->createTestUser(Role::Worker, self::WORKER_EMAIL);
         $this->createTestUser(Role::Admin, self::ADMIN_EMAIL);
         $this->loginAs(self::WORKER_EMAIL);
@@ -36,6 +38,7 @@ class PartControllerTest extends WebTestCase
     protected function tearDown(): void
     {
         $this->cleanTestParts();
+        $this->cleanTestSuppliers();
         $this->cleanTestUsers();
         parent::tearDown();
     }
@@ -84,6 +87,24 @@ class PartControllerTest extends WebTestCase
         $this->em->createQuery(
             'DELETE FROM App\Entity\Part p WHERE p.reference LIKE :prefix'
         )->setParameter('prefix', self::REF_PREFIX . '%')->execute();
+        $this->em->clear();
+    }
+
+    private function createTestSupplier(string $name = 'Test Supplier'): Supplier
+    {
+        $supplier = (new Supplier())->setName($name);
+        $this->em->persist($supplier);
+        $this->em->flush();
+        $this->em->clear();
+
+        return $supplier;
+    }
+
+    private function cleanTestSuppliers(): void
+    {
+        $this->em->createQuery(
+            'DELETE FROM App\Entity\Supplier s WHERE s.name LIKE :prefix'
+        )->setParameter('prefix', 'Test Supplier%')->execute();
         $this->em->clear();
     }
 
@@ -159,7 +180,7 @@ class PartControllerTest extends WebTestCase
         $this->client->request('POST', '/api/parts', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'reference'     => 'PTEST-NEW',
             'label'         => 'Created Part',
-            'type'          => 'purchased',
+            'type'          => 'finished',
             'salePrice'     => 25.5,
             'stockQuantity' => 50,
             'stockMin'      => 5,
@@ -170,7 +191,7 @@ class PartControllerTest extends WebTestCase
         $this->assertArrayHasKey('id', $data);
         $this->assertSame('PTEST-NEW', $data['reference']);
         $this->assertSame('Created Part', $data['label']);
-        $this->assertSame('purchased', $data['type']);
+        $this->assertSame('finished', $data['type']);
         $this->assertSame(25.5, $data['salePrice']);
         $this->assertSame(50, $data['stockQuantity']);
         $this->assertSame(5, $data['stockMin']);
@@ -179,12 +200,20 @@ class PartControllerTest extends WebTestCase
 
     public function testCreatePartAcceptsAllPieceTypes(): void
     {
+        $supplier = $this->createTestSupplier();
+        $bought = [PieceType::Purchased, PieceType::RawMaterial];
+
         foreach (PieceType::cases() as $i => $type) {
-            $this->client->request('POST', '/api/parts', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            $extra = match(true) {
+                $type === PieceType::Finished                 => ['salePrice' => 10.0],
+                in_array($type, $bought, true)                => ['catalogPrice' => 10.0, 'supplierId' => $supplier->getId()],
+                default                                       => [],
+            };
+            $this->client->request('POST', '/api/parts', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode(array_merge([
                 'reference' => "PTEST-TYPE-{$i}",
                 'label'     => "Type test {$type->value}",
                 'type'      => $type->value,
-            ]));
+            ], $extra)));
             $this->assertResponseStatusCodeSame(201, "Failed for type: {$type->value}");
             $data = json_decode($this->client->getResponse()->getContent(), true);
             $this->assertSame($type->value, $data['type']);
@@ -270,7 +299,7 @@ class PartControllerTest extends WebTestCase
 
     public function testUpdateChangesSpecifiedFields(): void
     {
-        $part = $this->createPart('001');
+        $part = $this->createPart('001', PieceType::Finished);
 
         $this->client->request('PUT', '/api/parts/' . $part->getId(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label'         => 'Updated Label',
@@ -290,7 +319,7 @@ class PartControllerTest extends WebTestCase
 
     public function testUpdateDoesNotChangeUnspecifiedFields(): void
     {
-        $part = $this->createPart('001', PieceType::RawMaterial, 50.5, 30, 5);
+        $part = $this->createPart('001', PieceType::Finished, 50.5, 30, 5);
 
         $this->client->request('PUT', '/api/parts/' . $part->getId(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label' => 'Changed Label Only',
@@ -299,7 +328,7 @@ class PartControllerTest extends WebTestCase
         $this->assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
         $this->assertSame('Changed Label Only', $data['label']);
-        $this->assertSame('raw_material', $data['type']);  // unchanged
+        $this->assertSame('finished', $data['type']);  // unchanged
         $this->assertSame(50.5, $data['salePrice']);       // unchanged
         $this->assertSame(30, $data['stockQuantity']);     // unchanged
         $this->assertSame(5, $data['stockMin']);           // unchanged

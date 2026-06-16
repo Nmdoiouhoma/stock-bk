@@ -25,6 +25,10 @@ class Routing
     #[ORM\JoinColumn(nullable: false)]
     private ?Part $part = null;
 
+    #[ORM\ManyToOne(inversedBy: 'routings')]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $supervisor = null;
+
     #[ORM\OneToMany(mappedBy: 'routing', targetEntity: Operation::class)]
     private Collection $operations;
 
@@ -70,6 +74,18 @@ class Routing
     public function setPart(?Part $part): static
     {
         $this->part = $part;
+
+        return $this;
+    }
+
+    public function getSupervisor(): ?User
+    {
+        return $this->supervisor;
+    }
+
+    public function setSupervisor(?User $supervisor): static
+    {
+        $this->supervisor = $supervisor;
 
         return $this;
     }
