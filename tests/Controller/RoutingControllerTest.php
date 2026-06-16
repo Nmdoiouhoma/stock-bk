@@ -87,7 +87,7 @@ class RoutingControllerTest extends WebTestCase
             ->setType($type)
             ->setSalePrice(100.0)
             ->setStockQuantity(10)
-            ->setStockMin(1);
+            ;
         $this->em->persist($part);
         $this->em->flush();
         $this->em->clear();
