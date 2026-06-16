@@ -127,7 +127,7 @@ class UserController extends AbstractController
             'firstname' => $user->getFirstname(),
             'lastname'  => $user->getLastname(),
             'email'     => $user->getEmail(),
-            // Symfony role names (e.g. ["ROLE_ADMIN", "ROLE_USER"]) - useful for authorization checks
+            'role'      => $user->getRole()?->value,
             'roles'     => $user->getRoles(),
         ];
     }
