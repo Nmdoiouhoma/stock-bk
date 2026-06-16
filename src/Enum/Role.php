@@ -8,4 +8,5 @@ enum Role: string
     case Worker = 'worker';
     case Customer = 'customer';
     case Seller = 'seller';
+    case Supervisor = 'supervisor';
 }

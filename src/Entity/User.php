@@ -4,6 +4,8 @@ namespace App\Entity;
 
 use App\Enum\Role;
 use App\Repository\UserRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -31,6 +33,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\Column(length: 255)]
     private ?string $password = null;
+
+    #[ORM\OneToMany(mappedBy: 'supervisor', targetEntity: Routing::class)]
+    private Collection $routings;
+
+    public function __construct()
+    {
+        $this->routings = new ArrayCollection();
+    }
 
     public function getId(): ?int
     {
@@ -111,6 +121,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         }
 
         return ['ROLE_' . strtoupper($this->role->value), 'ROLE_USER'];
+    }
+
+    /**
+     * @return Collection<int, Routing>
+     */
+    public function getRoutings(): Collection
+    {
+        return $this->routings;
     }
 
     public function eraseCredentials(): void
