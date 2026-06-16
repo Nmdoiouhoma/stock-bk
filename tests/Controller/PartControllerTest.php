@@ -113,15 +113,13 @@ class PartControllerTest extends WebTestCase
         PieceType $type = PieceType::Purchased,
         ?float $salePrice = 10.0,
         int $stockQuantity = 100,
-        int $stockMin = 10,
     ): Part {
         $part = (new Part())
             ->setReference(self::REF_PREFIX . $suffix)
             ->setLabel('Test Part ' . $suffix)
             ->setType($type)
             ->setSalePrice($salePrice)
-            ->setStockQuantity($stockQuantity)
-            ->setStockMin($stockMin);
+            ->setStockQuantity($stockQuantity);
         $this->em->persist($part);
         $this->em->flush();
         $this->em->clear();
@@ -183,7 +181,6 @@ class PartControllerTest extends WebTestCase
             'type'          => 'finished',
             'salePrice'     => 25.5,
             'stockQuantity' => 50,
-            'stockMin'      => 5,
         ]));
 
         $this->assertResponseStatusCodeSame(201);
@@ -194,7 +191,6 @@ class PartControllerTest extends WebTestCase
         $this->assertSame('finished', $data['type']);
         $this->assertSame(25.5, $data['salePrice']);
         $this->assertSame(50, $data['stockQuantity']);
-        $this->assertSame(5, $data['stockMin']);
         $this->assertNull($data['supplier']);
     }
 
@@ -272,7 +268,7 @@ class PartControllerTest extends WebTestCase
 
     public function testShowReturnsCorrectPartData(): void
     {
-        $part = $this->createPart('001', PieceType::Finished, 99.9, 30, 5);
+        $part = $this->createPart('001', PieceType::Finished, 99.9, 30);
 
         $this->client->request('GET', '/api/parts/' . $part->getId());
 
@@ -284,7 +280,6 @@ class PartControllerTest extends WebTestCase
         $this->assertSame('finished', $data['type']);
         $this->assertSame(99.9, $data['salePrice']);
         $this->assertSame(30, $data['stockQuantity']);
-        $this->assertSame(5, $data['stockMin']);
         $this->assertNull($data['supplier']);
     }
 
@@ -304,7 +299,6 @@ class PartControllerTest extends WebTestCase
         $this->client->request('PUT', '/api/parts/' . $part->getId(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label'         => 'Updated Label',
             'stockQuantity' => 200,
-            'stockMin'      => 20,
             'salePrice'     => 99.99,
         ]));
 
@@ -312,14 +306,13 @@ class PartControllerTest extends WebTestCase
         $data = json_decode($this->client->getResponse()->getContent(), true);
         $this->assertSame('Updated Label', $data['label']);
         $this->assertSame(200, $data['stockQuantity']);
-        $this->assertSame(20, $data['stockMin']);
         $this->assertSame(99.99, $data['salePrice']);
         $this->assertSame('PTEST-001', $data['reference']); // unchanged
     }
 
     public function testUpdateDoesNotChangeUnspecifiedFields(): void
     {
-        $part = $this->createPart('001', PieceType::Finished, 50.5, 30, 5);
+        $part = $this->createPart('001', PieceType::Finished, 50.5, 30);
 
         $this->client->request('PUT', '/api/parts/' . $part->getId(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label' => 'Changed Label Only',
@@ -331,7 +324,6 @@ class PartControllerTest extends WebTestCase
         $this->assertSame('finished', $data['type']);  // unchanged
         $this->assertSame(50.5, $data['salePrice']);       // unchanged
         $this->assertSame(30, $data['stockQuantity']);     // unchanged
-        $this->assertSame(5, $data['stockMin']);           // unchanged
     }
 
     public function testUpdateWithNullStringFieldReturnsUnprocessable(): void

@@ -68,7 +68,7 @@ class AppFixtures extends Fixture
     {
         // format: firstname, lastname, email, role, plainPassword
         $data = [
-            ['Marie',   'Dupont',    'admin@atelier.fr',          Role::Admin,      'AdminPass123!'],
+            ['Marie',   'Dupont',    'admin@atelier.fr',          Role::Admin,      'AdminPass1234!'],
             ['Jean',    'Martin',    'jean.martin@atelier.fr',    Role::Worker,     'WorkerJean1!'],
             ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker,     'WorkerSophie2!'],
             ['Pierre',  'Bernard',   'client@exemple.fr',         Role::Customer,   'ClientPierre!'],
@@ -141,21 +141,21 @@ class AppFixtures extends Fixture
         [$acier, $plastiques, , $visserie] = $suppliers;
 
         $data = [
-            // ref,       label,                        type,                        price,  qty, min, supplier,    catalogPrice
-            ['REF-001', 'Barre acier 20mm',             PieceType::RawMaterial,      null,   150,  50, $acier,      12.50],
-            ['REF-002', 'Plaque aluminium 5mm',         PieceType::RawMaterial,      null,    80,  30, $acier,      18.00],
-            ['REF-003', 'Vis M8 x 20mm',                PieceType::Purchased,        null,  2000, 500, $visserie,    0.15],
-            ['REF-004', 'Écrou M8',                     PieceType::Purchased,        null,  2000, 500, $visserie,    0.08],
-            ['REF-005', 'Peinture époxy rouge (bidon)', PieceType::Purchased,        null,    20,   5, $plastiques, 24.00],
-            ['REF-006', 'Corps de vanne usiné',         PieceType::Intermediate,     null,    45,  10, null,         null],
-            ['REF-007', 'Couvercle aluminium',          PieceType::Intermediate,     null,    60,  10, null,         null],
-            ['REF-008', 'Vanne industrielle V100',      PieceType::Finished,        450.0,    25,   5, null,         null],
-            ['REF-009', 'Vanne compacte V50',           PieceType::Finished,        280.0,    40,  10, null,         null],
-            ['REF-010', 'Kit maintenance V100',         PieceType::Finished,         85.0,    30,   8, null,         null],
+            // ref,       label,                        type,                        price,  qty, supplier,    catalogPrice
+            ['REF-001', 'Barre acier 20mm',             PieceType::RawMaterial,      null,   150, $acier,      12.50],
+            ['REF-002', 'Plaque aluminium 5mm',         PieceType::RawMaterial,      null,    80, $acier,      18.00],
+            ['REF-003', 'Vis M8 x 20mm',                PieceType::Purchased,        null,  2000, $visserie,    0.15],
+            ['REF-004', 'Écrou M8',                     PieceType::Purchased,        null,  2000, $visserie,    0.08],
+            ['REF-005', 'Peinture époxy rouge (bidon)', PieceType::Purchased,        null,    20, $plastiques, 24.00],
+            ['REF-006', 'Corps de vanne usiné',         PieceType::Intermediate,     null,    45, null,         null],
+            ['REF-007', 'Couvercle aluminium',          PieceType::Intermediate,     null,    60, null,         null],
+            ['REF-008', 'Vanne industrielle V100',      PieceType::Finished,        450.0,    25, null,         null],
+            ['REF-009', 'Vanne compacte V50',           PieceType::Finished,        280.0,    40, null,         null],
+            ['REF-010', 'Kit maintenance V100',         PieceType::Finished,         85.0,    30, null,         null],
         ];
 
         $parts = [];
-        foreach ($data as [$ref, $label, $type, $price, $qty, $min, $supplier, $catalogPrice]) {
+        foreach ($data as [$ref, $label, $type, $price, $qty, $supplier, $catalogPrice]) {
             $p = (new Part())
                 ->setReference($ref)
                 ->setLabel($label)
@@ -163,7 +163,6 @@ class AppFixtures extends Fixture
                 ->setSalePrice($price)
                 ->setCatalogPrice($catalogPrice)
                 ->setStockQuantity($qty)
-                ->setStockMin($min)
                 ->setSupplier($supplier);
             $manager->persist($p);
             $parts[] = $p;

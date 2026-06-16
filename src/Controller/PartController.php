@@ -55,7 +55,6 @@ class PartController extends AbstractController
         $part->setSalePrice(isset($data['salePrice']) ? (float) $data['salePrice'] : null);
         $part->setCatalogPrice(isset($data['catalogPrice']) ? (float) $data['catalogPrice'] : null);
         $part->setStockQuantity((int) ($data['stockQuantity'] ?? 0));
-        $part->setStockMin((int) ($data['stockMin'] ?? 0));
 
         if (isset($data['supplierId'])) {
             $supplier = $supplierRepo->find($data['supplierId']);
@@ -121,9 +120,6 @@ class PartController extends AbstractController
         if (array_key_exists('stockQuantity', $data)) {
             $part->setStockQuantity((int) $data['stockQuantity']);
         }
-        if (array_key_exists('stockMin', $data)) {
-            $part->setStockMin((int) $data['stockMin']);
-        }
         if (array_key_exists('supplierId', $data)) {
             if ($data['supplierId'] === null) {
                 $part->setSupplier(null);
@@ -166,7 +162,6 @@ class PartController extends AbstractController
             'salePrice'     => $part->getSalePrice(),
             'catalogPrice'  => $part->getCatalogPrice(),
             'stockQuantity' => $part->getStockQuantity(),
-            'stockMin'      => $part->getStockMin(),
             'supplier'      => $part->getSupplier() ? [
                 'id'   => $part->getSupplier()->getId(),
                 'name' => $part->getSupplier()->getName(),
