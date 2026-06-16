@@ -128,6 +128,7 @@ class UserController extends AbstractController
             'lastname'  => $user->getLastname(),
             'email'     => $user->getEmail(),
             'role'      => $user->getRole()?->value,
+            'roles'     => $user->getRoles(),
         ];
     }
 }

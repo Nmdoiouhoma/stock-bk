@@ -2,12 +2,16 @@
 
 namespace App\Controller;
 
+use App\Entity\Operation;
 use App\Entity\Routing;
 use App\Enum\PieceType;
 use App\Enum\Role;
+use App\Repository\MachineRepository;
+use App\Repository\OperationRepository;
 use App\Repository\PartRepository;
 use App\Repository\RoutingRepository;
 use App\Repository\UserRepository;
+use App\Repository\WorkstationRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -194,6 +198,91 @@ final class RoutingController extends AbstractController
         return $this->json(null, Response::HTTP_NO_CONTENT);
     }
 
+    #[Route('/{id}/operations', name: 'routing_operation_create', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function createOperation(
+        Routing $routing,
+        Request $request,
+        EntityManagerInterface $em,
+        ValidatorInterface $validator,
+        WorkstationRepository $workstationRepository,
+        OperationRepository $operationRepository,
+        MachineRepository $machineRepository
+    ): JsonResponse {
+        $data = json_decode($request->getContent(), true);
+
+        if (!is_array($data)) {
+            return $this->json(['error' => 'JSON invalide'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!isset($data['label']) || !is_string($data['label']) || trim($data['label']) === '') {
+            return $this->json(['error' => 'Le champ "label" est obligatoire.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!isset($data['unitTime']) || !is_numeric($data['unitTime'])) {
+            return $this->json(['error' => 'Le champ "unitTime" est obligatoire et doit être un nombre.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!isset($data['workstationId']) || !is_int($data['workstationId'])) {
+            return $this->json(['error' => 'Le champ "workstationId" est obligatoire et doit être un entier.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $workstation = $workstationRepository->find($data['workstationId']);
+        if ($workstation === null) {
+            return $this->json(['error' => 'La poste de travail spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $machine = null;
+        if (array_key_exists('machineId', $data) && $data['machineId'] !== null) {
+            if (!is_int($data['machineId'])) {
+                return $this->json(['error' => 'Le champ "machineId" doit être un entier ou null.'], Response::HTTP_BAD_REQUEST);
+            }
+            $machine = $machineRepository->find($data['machineId']);
+            if ($machine === null) {
+                return $this->json(['error' => 'La machine spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
+            }
+        }
+
+        $max = $operationRepository->getMaxRankForRouting($routing);
+        $rank = ($max === null) ? 1 : ($max + 1);
+
+        $operation = new Operation();
+        $operation->setLabel(trim($data['label']));
+        $operation->setUnitTime((float) $data['unitTime']);
+        $operation->setRouting($routing);
+        $operation->setWorkstation($workstation);
+        $operation->setMachine($machine);
+        $operation->setRank($rank);
+
+        $errors = $validator->validate($operation);
+        if (count($errors) > 0) {
+            return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $em->persist($operation);
+        $em->flush();
+
+        // Return similar payload as OperationController::toArray
+        return $this->json([
+            'id' => $operation->getId(),
+            'rank' => $operation->getRank(),
+            'label' => $operation->getLabel(),
+            'unitTime' => $operation->getUnitTime(),
+            'routing' => [
+                'id' => $routing->getId(),
+                'reference' => $routing->getReference(),
+                'label' => $routing->getLabel(),
+            ],
+            'workstation' => $operation->getWorkstation() ? [
+                'id' => $operation->getWorkstation()->getId(),
+                'label' => $operation->getWorkstation()->getLabel() ?? null,
+            ] : null,
+            'machine' => $operation->getMachine() ? [
+                'id' => $operation->getMachine()->getId(),
+                'label' => $operation->getMachine()->getLabel() ?? null,
+            ] : null,
+        ], Response::HTTP_CREATED);
+    }
     private function toArray(Routing $routing): array
     {
         return [
