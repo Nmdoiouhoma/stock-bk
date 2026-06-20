@@ -22,12 +22,16 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/routings')]
-#[IsGranted('ROLE_WORKER')]
+#[IsGranted('ROLE_USER')]
 final class RoutingController extends AbstractController
 {
     #[Route('', name: 'routing_index', methods: ['GET'])]
     public function index(RoutingRepository $routingRepository): JsonResponse
     {
+        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        }
+
         $routings = $routingRepository->findAll();
 
         return $this->json(array_map(fn(Routing $g) => $this->toArray($g), $routings));
@@ -36,11 +40,14 @@ final class RoutingController extends AbstractController
     #[Route('/{id}', name: 'routing_show', methods: ['GET'])]
     public function show(Routing $routing): JsonResponse
     {
+        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        }
+
         return $this->json($this->toArray($routing));
     }
 
     #[Route('', name: 'routing_create', methods: ['POST'])]
-    #[IsGranted('ROLE_ADMIN')]
     public function create(
         Request $request,
         EntityManagerInterface $em,
@@ -49,6 +56,10 @@ final class RoutingController extends AbstractController
         UserRepository $userRepository,
         RoutingRepository $routingRepository,
     ): JsonResponse {
+        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        }
+
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -115,7 +126,6 @@ final class RoutingController extends AbstractController
     }
 
     #[Route('/{id}', name: 'routing_update', methods: ['PUT'])]
-    #[IsGranted('ROLE_ADMIN')]
     public function update(
         Routing $routing,
         Request $request,
@@ -125,6 +135,10 @@ final class RoutingController extends AbstractController
         UserRepository $userRepository,
         RoutingRepository $routingRepository,
     ): JsonResponse {
+        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        }
+
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -189,9 +203,12 @@ final class RoutingController extends AbstractController
     }
 
     #[Route('/{id}', name: 'routing_delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_ADMIN')]
     public function delete(Routing $routing, EntityManagerInterface $em): JsonResponse
     {
+        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        }
+
         $em->remove($routing);
         $em->flush();
 

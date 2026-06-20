@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller;
 
+use App\Entity\Machine;
 use App\Entity\User;
 use App\Entity\Workstation;
 use App\Enum\Role;
@@ -15,25 +16,30 @@ class WorkstationControllerTest extends WebTestCase
     private KernelBrowser $client;
     private EntityManagerInterface $em;
 
-    private const REF_PREFIX    = 'WSTEST-';
-    private const WORKER_EMAIL  = 'worker@wstest.com';
-    private const ADMIN_EMAIL   = 'admin@wstest.com';
-    private const TEST_PASSWORD = 'test_password';
+    private const REF_PREFIX     = 'WSTEST-';
+    private const MACHINE_PREFIX = 'MWSTEST-';
+    private const WORKER_EMAIL   = 'worker@wstest.com';
+    private const ADMIN_EMAIL    = 'admin@wstest.com';
+    private const USER_EMAIL     = 'qualif@wstest.com';
+    private const TEST_PASSWORD  = 'test_password';
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->client = static::createClient();
         $this->em = static::getContainer()->get(EntityManagerInterface::class);
+        $this->cleanTestMachines();
         $this->cleanTestWorkstations();
         $this->cleanTestUsers();
         $this->createTestUser(Role::Worker, self::WORKER_EMAIL);
         $this->createTestUser(Role::Admin, self::ADMIN_EMAIL);
+        $this->createTestUser(Role::Worker, self::USER_EMAIL);
         $this->loginAs(self::WORKER_EMAIL);
     }
 
     protected function tearDown(): void
     {
+        $this->cleanTestMachines();
         $this->cleanTestWorkstations();
         $this->cleanTestUsers();
         parent::tearDown();
@@ -89,7 +95,7 @@ class WorkstationControllerTest extends WebTestCase
     {
         $conn = $this->em->getConnection();
         $conn->executeStatement(
-            'DELETE FROM machine WHERE workstation_id IN (SELECT id FROM workstation WHERE reference LIKE ?)',
+            'DELETE FROM machine_workstation WHERE workstation_id IN (SELECT id FROM workstation WHERE reference LIKE ?)',
             [self::REF_PREFIX . '%']
         );
         $conn->executeStatement(
@@ -102,11 +108,54 @@ class WorkstationControllerTest extends WebTestCase
         $this->em->clear();
     }
 
+    private function createTestMachine(string $suffix = '001', array $workstationIds = []): Machine
+    {
+        $machine = (new Machine())
+            ->setReference(self::MACHINE_PREFIX . $suffix)
+            ->setLabel('Test Machine WS ' . $suffix);
+
+        foreach ($workstationIds as $wsId) {
+            $ws = $this->em->find(Workstation::class, $wsId);
+            $machine->addWorkstation($ws);
+        }
+
+        $this->em->persist($machine);
+        $this->em->flush();
+        $this->em->clear();
+
+        return $machine;
+    }
+
+    private function cleanTestMachines(): void
+    {
+        $conn = $this->em->getConnection();
+        $conn->executeStatement(
+            'DELETE FROM machine_workstation WHERE machine_id IN (SELECT id FROM machine WHERE reference LIKE ?)',
+            [self::MACHINE_PREFIX . '%']
+        );
+        $this->em->createQuery(
+            'DELETE FROM App\Entity\Machine m WHERE m.reference LIKE :prefix'
+        )->setParameter('prefix', self::MACHINE_PREFIX . '%')->execute();
+        $this->em->clear();
+    }
+
+    private function getTestUserId(string $email): int
+    {
+        return $this->em->createQuery(
+            'SELECT u.id FROM App\Entity\User u WHERE u.email = :email'
+        )->setParameter('email', $email)->getSingleScalarResult();
+    }
+
     private function cleanTestUsers(): void
     {
+        $conn = $this->em->getConnection();
+        $conn->executeStatement(
+            'DELETE FROM user_workstation WHERE user_id IN (SELECT id FROM "user" WHERE email IN (?, ?, ?))',
+            [self::WORKER_EMAIL, self::ADMIN_EMAIL, self::USER_EMAIL]
+        );
         $this->em->createQuery(
             'DELETE FROM App\Entity\User u WHERE u.email IN (:emails)'
-        )->setParameter('emails', [self::WORKER_EMAIL, self::ADMIN_EMAIL])->execute();
+        )->setParameter('emails', [self::WORKER_EMAIL, self::ADMIN_EMAIL, self::USER_EMAIL])->execute();
         $this->em->clear();
     }
 
@@ -414,5 +463,307 @@ class WorkstationControllerTest extends WebTestCase
         $this->client->request('DELETE', '/api/workstations/999999');
 
         $this->assertResponseStatusCodeSame(404);
+    }
+
+    // ── POST /api/workstations/{id}/machines/{machineId} ─────────
+
+    public function testAddMachineToWorkstationReturns204(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001');
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(204);
+    }
+
+    public function testAddMachineAppearsInWorkstationDetail(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001');
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->loginAs(self::WORKER_EMAIL);
+        $this->client->request('GET', '/api/workstations/' . $workstation->getId());
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $machineRefs = array_column($data['machines'], 'reference');
+        $this->assertContains(self::MACHINE_PREFIX . '001', $machineRefs);
+        $this->assertSame(1, $data['machinesCount']);
+    }
+
+    public function testAddMachineAlreadyAssociatedReturns409(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001', [$workstation->getId()]);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(409);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testAddMachineWithUnknownWorkstationReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $machine = $this->createTestMachine('001');
+
+        $this->client->request('POST', '/api/workstations/999999/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testAddMachineWithUnknownMachineReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/machines/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testWorkerCannotAddMachineReturns403(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001');
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    // ── DELETE /api/workstations/{id}/machines/{machineId} ───────
+
+    public function testRemoveMachineFromWorkstationReturns204(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001', [$workstation->getId()]);
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(204);
+    }
+
+    public function testRemovedMachineNoLongerAppearsInWorkstationDetail(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001', [$workstation->getId()]);
+
+        $this->loginAs(self::ADMIN_EMAIL);
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->loginAs(self::WORKER_EMAIL);
+        $this->client->request('GET', '/api/workstations/' . $workstation->getId());
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertSame([], $data['machines']);
+        $this->assertSame(0, $data['machinesCount']);
+    }
+
+    public function testRemoveMachineNotAssociatedReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001');
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testRemoveMachineWithUnknownWorkstationReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $machine = $this->createTestMachine('001');
+
+        $this->client->request('DELETE', '/api/workstations/999999/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testRemoveMachineWithUnknownMachineReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/machines/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testWorkerCannotRemoveMachineReturns403(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $machine     = $this->createTestMachine('001', [$workstation->getId()]);
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/machines/' . $machine->getId());
+
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    // ── POST /api/workstations/{id}/users/{userId} ───────────────
+
+    public function testAddUserToWorkstationReturns204(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(204);
+    }
+
+    public function testAddedUserAppearsInWorkstationDetail(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->loginAs(self::WORKER_EMAIL);
+        $this->client->request('GET', '/api/workstations/' . $workstation->getId());
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $userIds = array_column($data['qualifiedUsers'], 'id');
+        $this->assertContains($userId, $userIds);
+    }
+
+    public function testAddUserAlreadyAssociatedReturns409(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(409);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testAddUserWithUnknownWorkstationReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $userId = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/999999/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testAddUserWithUnknownUserReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testWorkerCannotAddUserReturns403(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    // ── DELETE /api/workstations/{id}/users/{userId} ─────────────
+
+    public function testRemoveUserFromWorkstationReturns204(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(204);
+    }
+
+    public function testRemovedUserNoLongerAppearsInWorkstationDetail(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->loginAs(self::ADMIN_EMAIL);
+        $this->client->request('POST', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+        $this->assertResponseStatusCodeSame(204);
+
+        $this->loginAs(self::WORKER_EMAIL);
+        $this->client->request('GET', '/api/workstations/' . $workstation->getId());
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $userIds = array_column($data['qualifiedUsers'], 'id');
+        $this->assertNotContains($userId, $userIds);
+    }
+
+    public function testRemoveUserNotAssociatedReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testRemoveUserWithUnknownWorkstationReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $userId = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('DELETE', '/api/workstations/999999/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testRemoveUserWithUnknownUserReturns404(): void
+    {
+        $this->loginAs(self::ADMIN_EMAIL);
+        $workstation = $this->createTestWorkstation('001');
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/users/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testWorkerCannotRemoveUserReturns403(): void
+    {
+        $workstation = $this->createTestWorkstation('001');
+        $userId      = $this->getTestUserId(self::USER_EMAIL);
+
+        $this->client->request('DELETE', '/api/workstations/' . $workstation->getId() . '/users/' . $userId);
+
+        $this->assertResponseStatusCodeSame(403);
     }
 }

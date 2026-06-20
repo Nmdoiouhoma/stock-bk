@@ -24,7 +24,7 @@ class Workstation
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $capacity = null;
 
-    #[ORM\OneToMany(mappedBy: 'workstation', targetEntity: Machine::class)]
+    #[ORM\ManyToMany(targetEntity: Machine::class, mappedBy: 'workstations')]
     private Collection $machines;
 
     #[ORM\OneToMany(mappedBy: 'workstation', targetEntity: Operation::class)]
@@ -37,7 +37,7 @@ class Workstation
     {
         $this->machines = new ArrayCollection();
         $this->operations = new ArrayCollection();
-    $this->qualifiedUsers = new ArrayCollection();
+        $this->qualifiedUsers = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -87,6 +87,22 @@ class Workstation
     public function getMachines(): Collection
     {
         return $this->machines;
+    }
+
+    public function addMachine(Machine $machine): static
+    {
+        if (!$this->machines->contains($machine)) {
+            $machine->addWorkstation($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMachine(Machine $machine): static
+    {
+        $machine->removeWorkstation($this);
+
+        return $this;
     }
 
     /**

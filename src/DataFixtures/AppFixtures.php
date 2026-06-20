@@ -144,19 +144,23 @@ class AppFixtures extends Fixture
     /** @return Machine[] */
     private function loadMachines(ObjectManager $manager, array $workstations): array
     {
-        [$ws1, $ws2, $ws3] = $workstations;
+        [$ws1, $ws2, $ws3, $ws4] = $workstations;
 
+        // format: ref, label, compatible workstations[]
         $data = [
-            ['M-001', 'Fraiseuse CNC',       $ws1],
-            ['M-002', 'Tour automatique',    $ws1],
-            ['M-003', 'Robot d\'assemblage', $ws2],
-            ['M-004', 'Presse hydraulique',  $ws2],
-            ['M-005', 'Cabine de peinture',  $ws3],
+            ['M-001', 'Fraiseuse CNC',        [$ws1]],
+            ['M-002', 'Tour automatique',     [$ws1, $ws4]],
+            ['M-003', 'Robot d\'assemblage',  [$ws2]],
+            ['M-004', 'Presse hydraulique',   [$ws2, $ws4]],
+            ['M-005', 'Cabine de peinture',   [$ws3]],
         ];
 
         $machines = [];
-        foreach ($data as [$ref, $label, $ws]) {
-            $m = (new Machine())->setReference($ref)->setLabel($label)->setWorkstation($ws);
+        foreach ($data as [$ref, $label, $wsList]) {
+            $m = (new Machine())->setReference($ref)->setLabel($label);
+            foreach ($wsList as $ws) {
+                $m->addWorkstation($ws);
+            }
             $manager->persist($m);
             $machines[] = $m;
         }
@@ -176,11 +180,11 @@ class AppFixtures extends Fixture
             ['REF-003', 'Vis M8 x 20mm',                PieceType::Purchased,        null,  2000, $visserie,    0.15],
             ['REF-004', 'Écrou M8',                     PieceType::Purchased,        null,  2000, $visserie,    0.08],
             ['REF-005', 'Peinture époxy rouge (bidon)', PieceType::Purchased,        null,    20, $plastiques, 24.00],
-            ['REF-006', 'Corps de vanne usiné',         PieceType::Intermediate,     null,    45, null,         null],
-            ['REF-007', 'Couvercle aluminium',          PieceType::Intermediate,     null,    60, null,         null],
-            ['REF-008', 'Vanne industrielle V100',      PieceType::Finished,        450.0,    25, null,         null],
-            ['REF-009', 'Vanne compacte V50',           PieceType::Finished,        280.0,    40, null,         null],
-            ['REF-010', 'Kit maintenance V100',         PieceType::Finished,         85.0,    30, null,         null],
+            ['REF-006', 'Plateau de jeu traité',        PieceType::Intermediate,     null,    45, null,         null],
+            ['REF-007', 'Pied de table usiné',          PieceType::Intermediate,     null,    60, null,         null],
+            ['REF-008', 'Table de ping-pong Pro 25',    PieceType::Finished,        599.0,    25, null,         null],
+            ['REF-009', 'Table de ping-pong Compact',   PieceType::Finished,        349.0,    40, null,         null],
+            ['REF-010', 'Set raquettes + balles',       PieceType::Finished,         24.0,    30, null,         null],
         ];
 
         $parts = [];
@@ -206,11 +210,11 @@ class AppFixtures extends Fixture
         [5 => $corpsVanne, 6 => $couvercle, 7 => $v100, 8 => $v50, 9 => $kit] = $parts;
 
         $data = [
-            ['RT-001', 'Gamme usinage corps vanne', $corpsVanne],
-            ['RT-002', 'Gamme usinage couvercle',   $couvercle],
-            ['RT-003', 'Gamme assemblage V100',      $v100],
-            ['RT-004', 'Gamme assemblage V50',       $v50],
-            ['RT-005', 'Gamme kit maintenance',      $kit],
+            ['RT-001', 'Fabrication plateau de jeu',      $corpsVanne],
+            ['RT-002', 'Fabrication pieds de table',      $couvercle],
+            ['RT-003', 'Assemblage table Pro 25',         $v100],
+            ['RT-004', 'Assemblage table Compact',        $v50],
+            ['RT-005', 'Fabrication set raquettes',       $kit],
         ];
 
         $routings = [];
@@ -236,20 +240,20 @@ class AppFixtures extends Fixture
 
         $data = [
             // rank, label,                      routing,     workstation, machine,         unitTime
-            [1, 'Découpe barre acier',            $rtCorps,    $ws1,       $fraiseuse,       0.50],
-            [2, 'Tournage extérieur',             $rtCorps,    $ws1,       $tour,            1.00],
-            [3, 'Perçage et filetage',            $rtCorps,    $ws1,       $fraiseuse,       0.75],
-            [1, 'Découpe plaque aluminium',       $rtCouvercle,$ws1,       $fraiseuse,       0.30],
-            [2, 'Fraisage contour',               $rtCouvercle,$ws1,       $fraiseuse,       0.50],
-            [1, 'Pré-assemblage corps',           $rtV100,     $ws2,       $robot,           0.50],
-            [2, 'Montage couvercle et vissage',   $rtV100,     $ws2,       $presse,          0.25],
-            [3, 'Peinture et finition',           $rtV100,     $ws3,       $cabinePeinture,  1.00],
-            [4, 'Contrôle qualité V100',          $rtV100,     $ws3,       null,             0.25],
-            [1, 'Assemblage V50',                 $rtV50,      $ws2,       $robot,           0.40],
-            [2, 'Peinture V50',                   $rtV50,      $ws3,       $cabinePeinture,  0.75],
-            [3, 'Contrôle qualité V50',           $rtV50,      $ws3,       null,             0.20],
-            [1, 'Préparation kit maintenance',    $rtKit,      $ws2,       null,             0.30],
-            [2, 'Conditionnement et étiquetage',  $rtKit,      $ws3,       null,             0.20],
+            [1, 'Découpe bois aux dimensions',    $rtCorps,    $ws1,       $fraiseuse,       0.50],
+            [2, 'Ponçage surface plateau',        $rtCorps,    $ws1,       $tour,            1.00],
+            [3, 'Application peinture époxy',     $rtCorps,    $ws1,       $fraiseuse,       0.75],
+            [1, 'Découpe tubes acier pieds',      $rtCouvercle,$ws1,       $fraiseuse,       0.30],
+            [2, 'Perçage fixation roulettes',     $rtCouvercle,$ws1,       $fraiseuse,       0.50],
+            [1, 'Assemblage plateau sur pieds',   $rtV100,     $ws2,       $robot,           0.50],
+            [2, 'Fixation roulettes',             $rtV100,     $ws2,       $presse,          0.25],
+            [3, 'Peinture table complète',        $rtV100,     $ws3,       $cabinePeinture,  1.00],
+            [4, 'Contrôle qualité table Pro',     $rtV100,     $ws3,       null,             0.25],
+            [1, 'Assemblage table Compact',       $rtV50,      $ws2,       $robot,           0.40],
+            [2, 'Peinture table Compact',         $rtV50,      $ws3,       $cabinePeinture,  0.75],
+            [3, 'Contrôle qualité table Compact', $rtV50,      $ws3,       null,             0.20],
+            [1, 'Préparation raquettes et balles', $rtKit,      $ws2,       null,             0.30],
+            [2, 'Conditionnement set',            $rtKit,      $ws3,       null,             0.20],
         ];
 
         $operations = [];

@@ -64,7 +64,7 @@ class OperationTestFixtures extends Fixture implements FixtureGroupInterface
         $machine = (new Machine())
             ->setReference(self::MACHINE_REF)
             ->setLabel('Machine de test')
-            ->setWorkstation($workstation);
+            ->addWorkstation($workstation);
         $manager->persist($machine);
 
         $part = (new Part())

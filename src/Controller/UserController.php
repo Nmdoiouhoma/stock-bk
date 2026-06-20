@@ -15,10 +15,19 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/api/users')]
-#[IsGranted('ROLE_ADMIN')]
 class UserController extends AbstractController
 {
+    #[Route('/supervisors', name: 'user_supervisors', methods: ['GET'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function supervisorsList(UserRepository $repository): JsonResponse
+    {
+        $users = $repository->findBy(['role' => Role::Supervisor]);
+
+        return $this->json(array_map(fn(User $u) => $this->toArray($u), $users));
+    }
+
     #[Route('', name: 'user_index', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function index(UserRepository $repository): JsonResponse
     {
         $users = $repository->findAll();
@@ -27,6 +36,7 @@ class UserController extends AbstractController
     }
 
     #[Route('', name: 'user_create', methods: ['POST'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function create(
         Request $request,
         EntityManagerInterface $em,
@@ -65,12 +75,14 @@ class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'user_show', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function show(User $user): JsonResponse
     {
         return $this->json($this->toArray($user));
     }
 
     #[Route('/{id}', name: 'user_update', methods: ['PUT'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function update(
         User $user,
         Request $request,
@@ -112,6 +124,7 @@ class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'user_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function delete(User $user, EntityManagerInterface $em): JsonResponse
     {
         $em->remove($user);
