@@ -21,15 +21,16 @@ class Machine
     #[ORM\Column(length: 255)]
     private ?string $label = null;
 
-    #[ORM\ManyToOne(inversedBy: 'machines')]
-    #[ORM\JoinColumn(nullable: true)]
-    private ?Workstation $workstation = null;
+    #[ORM\ManyToMany(targetEntity: Workstation::class, inversedBy: 'machines')]
+    #[ORM\JoinTable(name: 'machine_workstation')]
+    private Collection $workstations;
 
     #[ORM\OneToMany(mappedBy: 'machine', targetEntity: Operation::class)]
     private Collection $operations;
 
     public function __construct()
     {
+        $this->workstations = new ArrayCollection();
         $this->operations = new ArrayCollection();
     }
 
@@ -62,14 +63,26 @@ class Machine
         return $this;
     }
 
-    public function getWorkstation(): ?Workstation
+    /**
+     * @return Collection<int, Workstation>
+     */
+    public function getWorkstations(): Collection
     {
-        return $this->workstation;
+        return $this->workstations;
     }
 
-    public function setWorkstation(?Workstation $workstation): static
+    public function addWorkstation(Workstation $workstation): static
     {
-        $this->workstation = $workstation;
+        if (!$this->workstations->contains($workstation)) {
+            $this->workstations->add($workstation);
+        }
+
+        return $this;
+    }
+
+    public function removeWorkstation(Workstation $workstation): static
+    {
+        $this->workstations->removeElement($workstation);
 
         return $this;
     }

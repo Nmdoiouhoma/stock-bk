@@ -5,6 +5,8 @@ namespace App\Controller;
 use App\Entity\Machine;
 use App\Entity\User;
 use App\Entity\Workstation;
+use App\Repository\MachineRepository;
+use App\Repository\UserRepository;
 use App\Repository\WorkstationRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -127,6 +129,98 @@ final class WorkstationController extends AbstractController
         $em->flush();
 
         return $this->json($this->toArray($workstation));
+    }
+
+    #[Route('/{id}/machines/{machineId}', name: 'workstation_add_machine', methods: ['POST'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function addMachine(
+        Workstation $workstation,
+        int $machineId,
+        EntityManagerInterface $em,
+        MachineRepository $machineRepository,
+    ): JsonResponse {
+        $machine = $machineRepository->find($machineId);
+        if ($machine === null) {
+            return $this->json(['error' => 'Machine introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($machine->getWorkstations()->contains($workstation)) {
+            return $this->json(['error' => 'Cette machine est déjà associée à ce poste de travail.'], Response::HTTP_CONFLICT);
+        }
+
+        $machine->addWorkstation($workstation);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    #[Route('/{id}/machines/{machineId}', name: 'workstation_remove_machine', methods: ['DELETE'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function removeMachine(
+        Workstation $workstation,
+        int $machineId,
+        EntityManagerInterface $em,
+        MachineRepository $machineRepository,
+    ): JsonResponse {
+        $machine = $machineRepository->find($machineId);
+        if ($machine === null) {
+            return $this->json(['error' => 'Machine introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$machine->getWorkstations()->contains($workstation)) {
+            return $this->json(['error' => 'Cette machine n\'est pas associée à ce poste de travail.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $machine->removeWorkstation($workstation);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    #[Route('/{id}/users/{userId}', name: 'workstation_add_user', methods: ['POST'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function addUser(
+        Workstation $workstation,
+        int $userId,
+        EntityManagerInterface $em,
+        UserRepository $userRepository,
+    ): JsonResponse {
+        $user = $userRepository->find($userId);
+        if ($user === null) {
+            return $this->json(['error' => 'Utilisateur introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($user->getWorkstations()->contains($workstation)) {
+            return $this->json(['error' => 'Cet utilisateur est déjà qualifié sur ce poste de travail.'], Response::HTTP_CONFLICT);
+        }
+
+        $user->addWorkstation($workstation);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    #[Route('/{id}/users/{userId}', name: 'workstation_remove_user', methods: ['DELETE'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function removeUser(
+        Workstation $workstation,
+        int $userId,
+        EntityManagerInterface $em,
+        UserRepository $userRepository,
+    ): JsonResponse {
+        $user = $userRepository->find($userId);
+        if ($user === null) {
+            return $this->json(['error' => 'Utilisateur introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$user->getWorkstations()->contains($workstation)) {
+            return $this->json(['error' => 'Cet utilisateur n\'est pas qualifié sur ce poste de travail.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $user->removeWorkstation($workstation);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
     }
 
     #[Route('/{id}', name: 'workstation_delete', methods: ['DELETE'])]
