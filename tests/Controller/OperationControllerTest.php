@@ -204,6 +204,7 @@ class OperationControllerTest extends WebTestCase
             'unitTime'      => 15.5,
             'routingId'     => $this->routingId(),
             'workstationId' => $this->wsId(),
+            'machineId'     => $this->machineId(),
         ]));
 
         $this->assertResponseStatusCodeSame(201);
@@ -214,7 +215,19 @@ class OperationControllerTest extends WebTestCase
         $this->assertSame(3, $data['rank']); // fixture already has rank 1 and 2
         $this->assertSame($this->routingId(), $data['routing']['id']);
         $this->assertSame($this->wsId(), $data['workstation']['id']);
-        $this->assertNull($data['machine']);
+        $this->assertSame($this->machineId(), $data['machine']['id']);
+    }
+
+    public function testCreateWithMissingMachineIdReturnsBadRequest(): void
+    {
+        $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
+
+        $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingId' => $this->routingId(), 'workstationId' => $this->wsId(),
+        ]));
+
+        $this->assertResponseStatusCodeSame(400);
+        $this->assertArrayHasKey('error', json_decode($this->client->getResponse()->getContent(), true));
     }
 
     public function testCreateOperationWithMachineReturns201(): void

@@ -30,10 +30,14 @@ class Workstation
     #[ORM\OneToMany(mappedBy: 'workstation', targetEntity: Operation::class)]
     private Collection $operations;
 
+    #[ORM\ManyToMany(mappedBy: 'workstations', targetEntity: User::class)]
+    private Collection $qualifiedUsers;
+
     public function __construct()
     {
         $this->machines = new ArrayCollection();
         $this->operations = new ArrayCollection();
+    $this->qualifiedUsers = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -91,5 +95,29 @@ class Workstation
     public function getOperations(): Collection
     {
         return $this->operations;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function getQualifiedUsers(): Collection
+    {
+        return $this->qualifiedUsers;
+    }
+
+    public function addQualifiedUser(User $user): static
+    {
+        if (!$this->qualifiedUsers->contains($user)) {
+            $this->qualifiedUsers->add($user);
+        }
+
+        return $this;
+    }
+
+    public function removeQualifiedUser(User $user): static
+    {
+        $this->qualifiedUsers->removeElement($user);
+
+        return $this;
     }
 }
