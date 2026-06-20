@@ -30,13 +30,15 @@ class AppFixtures extends Fixture
 
     public function load(ObjectManager $manager): void
     {
-        $suppliers   = $this->loadSuppliers($manager);
-        $supervisor  = $this->loadUsers($manager);
+        $suppliers    = $this->loadSuppliers($manager);
+        $users        = $this->loadUsers($manager);
+        $supervisor   = array_values(array_filter($users, fn(User $u) => $u->getRole() === Role::Supervisor))[0];
         $workstations = $this->loadWorkstations($manager);
-        $machines    = $this->loadMachines($manager, $workstations);
-        $parts       = $this->loadParts($manager, $suppliers);
-        $routings    = $this->loadRoutings($manager, $parts, $supervisor);
-        $operations  = $this->loadOperations($manager, $routings, $workstations, $machines);
+        $machines     = $this->loadMachines($manager, $workstations);
+        $parts        = $this->loadParts($manager, $suppliers);
+        $routings     = $this->loadRoutings($manager, $parts, $supervisor);
+        $operations   = $this->loadOperations($manager, $routings, $workstations, $machines);
+        $this->loadUserWorkstations($users, $workstations);
         $this->loadBoms($manager, $parts);
         $this->loadForecasts($manager, $operations);
         $this->loadCompletions($manager, $operations);
@@ -64,19 +66,22 @@ class AppFixtures extends Fixture
         return $suppliers;
     }
 
-    private function loadUsers(ObjectManager $manager): User
+    /** @return User[] */
+    private function loadUsers(ObjectManager $manager): array
     {
         // format: firstname, lastname, email, role, plainPassword
         $data = [
-            ['Marie',   'Dupont',    'admin@atelier.fr',          Role::Admin,      'AdminPass1234!'],
-            ['Jean',    'Martin',    'jean.martin@atelier.fr',    Role::Worker,     'WorkerJean1!'],
-            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr', Role::Worker,     'WorkerSophie2!'],
-            ['Pierre',  'Bernard',   'client@exemple.fr',         Role::Customer,   'ClientPierre!'],
-            ['Luc',     'Moreau',    'commercial@atelier.fr',     Role::Seller,     'SellerLuc!'],
-            ['Alice',   'Renard',    'supervisor@atelier.fr',     Role::Supervisor, 'SupervisorAlice!'],
+            ['Marie',   'Dupont',    'admin@atelier.fr',           Role::Admin,      'AdminPass1234!'],
+            ['Jean',    'Martin',    'jean.martin@atelier.fr',     Role::Worker,     'WorkerJean1!'],
+            ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr',  Role::Worker,     'WorkerSophie2!'],
+            ['Pierre',  'Bernard',   'client@exemple.fr',          Role::Customer,   'ClientPierre!'],
+            ['Luc',     'Moreau',    'commercial@atelier.fr',      Role::Seller,     'SellerLuc!'],
+            ['Alice',   'Renard',    'supervisor@atelier.fr',      Role::Supervisor, 'SupervisorAlice!'],
+            ['Thomas',  'Petit',     'thomas.petit@atelier.fr',    Role::Worker,     'WorkerThomas3!'],
+            ['Emma',    'Lefebvre',  'emma.lefebvre@atelier.fr',   Role::Worker,     'WorkerEmma4!'],
         ];
 
-        $supervisor = null;
+        $users = [];
         foreach ($data as [$first, $last, $email, $role, $plainPassword]) {
             $u = (new User())
                 ->setFirstname($first)
@@ -85,21 +90,24 @@ class AppFixtures extends Fixture
                 ->setRole($role);
             $u->setPassword($this->hasher->hashPassword($u, $plainPassword));
             $manager->persist($u);
-            if ($role === Role::Supervisor) {
-                $supervisor = $u;
-            }
+            $users[] = $u;
         }
 
-        return $supervisor;
+        return $users;
     }
 
     /** @return Workstation[] */
     private function loadWorkstations(ObjectManager $manager): array
     {
         $data = [
-            ['WS-001', 'Poste de découpe',    8],
-            ['WS-002', 'Poste d\'assemblage', 6],
-            ['WS-003', 'Poste de finition',   4],
+            ['WS-001', 'Poste de découpe',            8],
+            ['WS-002', 'Poste d\'assemblage',          6],
+            ['WS-003', 'Poste de finition',            4],
+            ['WS-004', 'Poste de soudure',             3],
+            ['WS-005', 'Poste de contrôle qualité',    5],
+            ['WS-006', 'Poste d\'emballage',          10],
+            ['WS-007', 'Poste de maintenance',         2],
+            ['WS-008', 'Poste de programmation CNC',   4],
         ];
 
         $workstations = [];
@@ -110,6 +118,27 @@ class AppFixtures extends Fixture
         }
 
         return $workstations;
+    }
+
+    private function loadUserWorkstations(array $users, array $workstations): void
+    {
+        // users order: 0=admin, 1=jean, 2=sophie, 3=client, 4=seller, 5=alice(supervisor), 6=thomas, 7=emma
+        [, $jean, $sophie, , , $alice, $thomas, $emma] = $users;
+        [$ws1, $ws2, $ws3, $ws4, $ws5, $ws6, $ws7, $ws8] = $workstations;
+
+        $links = [
+            [$jean,   [$ws1, $ws4]],
+            [$sophie, [$ws2, $ws3, $ws5]],
+            [$alice,  [$ws1, $ws2, $ws3, $ws5]],
+            [$thomas, [$ws1, $ws2, $ws4, $ws7]],
+            [$emma,   [$ws3, $ws5, $ws6]],
+        ];
+
+        foreach ($links as [$user, $wsList]) {
+            foreach ($wsList as $ws) {
+                $user->addWorkstation($ws);
+            }
+        }
     }
 
     /** @return Machine[] */

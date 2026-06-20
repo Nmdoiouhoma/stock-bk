@@ -36,10 +36,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\OneToMany(mappedBy: 'supervisor', targetEntity: Routing::class)]
     private Collection $routings;
+    
+    #[ORM\ManyToMany(targetEntity: Workstation::class, inversedBy: 'qualifiedUsers')]
+    #[ORM\JoinTable(name: 'user_workstation')]
+    private Collection $workstations;
 
     public function __construct()
     {
         $this->routings = new ArrayCollection();
+    $this->workstations = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -129,6 +134,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getRoutings(): Collection
     {
         return $this->routings;
+    }
+
+    /**
+     * @return Collection<int, Workstation>
+     */
+    public function getWorkstations(): Collection
+    {
+        return $this->workstations;
+    }
+
+    public function addWorkstation(Workstation $workstation): static
+    {
+        if (!$this->workstations->contains($workstation)) {
+            $this->workstations->add($workstation);
+        }
+
+        return $this;
+    }
+
+    public function removeWorkstation(Workstation $workstation): static
+    {
+        $this->workstations->removeElement($workstation);
+
+        return $this;
     }
 
     public function eraseCredentials(): void

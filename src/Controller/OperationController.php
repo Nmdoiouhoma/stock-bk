@@ -83,15 +83,13 @@ final class OperationController extends AbstractController
             return $this->json(['error' => 'La poste de travail spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
         }
 
-        $machine = null;
-        if (array_key_exists('machineId', $data) && $data['machineId'] !== null) {
-            if (!is_int($data['machineId'])) {
-                return $this->json(['error' => 'Le champ "machineId" doit être un entier ou null.'], Response::HTTP_BAD_REQUEST);
-            }
-            $machine = $machineRepository->find($data['machineId']);
-            if ($machine === null) {
-                return $this->json(['error' => 'La machine spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
-            }
+        if (!isset($data['machineId']) || !is_int($data['machineId'])) {
+            return $this->json(['error' => 'Le champ "machineId" est obligatoire et doit être un entier.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $machine = $machineRepository->find($data['machineId']);
+        if ($machine === null) {
+            return $this->json(['error' => 'La machine spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
         }
 
         $max = $operationRepository->getMaxRankForRouting($routing);
