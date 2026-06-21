@@ -209,6 +209,10 @@ final class RoutingController extends AbstractController
             throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
         }
 
+        if (!$routing->getOperations()->isEmpty()) {
+            return $this->json(['error' => 'Impossible de supprimer une gamme qui possède des opérations.'], Response::HTTP_CONFLICT);
+        }
+
         $em->remove($routing);
         $em->flush();
 
@@ -302,21 +306,37 @@ final class RoutingController extends AbstractController
     }
     private function toArray(Routing $routing): array
     {
+        $operations = $routing->getOperations()->toArray();
+        usort($operations, fn(Operation $a, Operation $b) => $a->getRank() <=> $b->getRank());
+
         return [
-            'id'              => $routing->getId(),
-            'reference'       => $routing->getReference(),
-            'label'           => $routing->getLabel(),
-            'part'            => $routing->getPart() ? [
+            'id'         => $routing->getId(),
+            'reference'  => $routing->getReference(),
+            'label'      => $routing->getLabel(),
+            'part'       => $routing->getPart() ? [
                 'id'        => $routing->getPart()->getId(),
                 'reference' => $routing->getPart()->getReference(),
                 'label'     => $routing->getPart()->getLabel(),
             ] : null,
-            'supervisor'      => $routing->getSupervisor() ? [
+            'supervisor' => $routing->getSupervisor() ? [
                 'id'        => $routing->getSupervisor()->getId(),
                 'firstname' => $routing->getSupervisor()->getFirstname(),
                 'lastname'  => $routing->getSupervisor()->getLastname(),
             ] : null,
-            'operationsCount' => $routing->getOperations()->count(),
+            'operations' => array_map(fn(Operation $o) => [
+                'id'       => $o->getId(),
+                'rank'     => $o->getRank(),
+                'label'    => $o->getLabel(),
+                'unitTime' => $o->getUnitTime(),
+                'workstation' => $o->getWorkstation() ? [
+                    'id'    => $o->getWorkstation()->getId(),
+                    'label' => $o->getWorkstation()->getLabel(),
+                ] : null,
+                'machine' => $o->getMachine() ? [
+                    'id'    => $o->getMachine()->getId(),
+                    'label' => $o->getMachine()->getLabel(),
+                ] : null,
+            ], $operations),
         ];
     }
 

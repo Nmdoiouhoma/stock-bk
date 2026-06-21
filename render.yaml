@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: stock-bk
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: ""        # entrypoint handles startup
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: APP_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stock-db
+          property: connectionString
+      - key: CORS_ALLOW_ORIGIN
+        value: "^https?://.*$"
+      - key: JWT_PASSPHRASE
+        sync: false   # à renseigner manuellement dans le dashboard Render
+
+databases:
+  - name: stock-db
+    plan: free
+    databaseName: stock_db
+    user: stock_user
