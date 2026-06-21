@@ -28,6 +28,8 @@ class ForecastTestFixtures extends Fixture implements FixtureGroupInterface
     public const REF_OPERATION2 = 'fc-test-operation2';
     public const REF_FORECAST1  = 'fc-test-forecast1';
     public const REF_FORECAST2  = 'fc-test-forecast2';
+    public const REF_PART       = 'fc-test-part';
+    public const INITIAL_STOCK  = 10;
 
     public function __construct(private UserPasswordHasherInterface $hasher) {}
 
@@ -58,7 +60,7 @@ class ForecastTestFixtures extends Fixture implements FixtureGroupInterface
             ->setLabel('Article forecast test')
             ->setType(PieceType::Finished)
             ->setSalePrice(100.0)
-            ->setStockQuantity(10);
+            ->setStockQuantity(self::INITIAL_STOCK);
         $manager->persist($part);
 
         $routing = (new Routing())
@@ -91,7 +93,7 @@ class ForecastTestFixtures extends Fixture implements FixtureGroupInterface
         $forecast1 = (new Forecast())
             ->setPlannedDate(new \DateTime('2026-07-01'))
             ->setPlannedQuantity(100)
-            ->setStatus(ForecastStatus::PENDING)
+            ->setStatus(ForecastStatus::IN_PROGRESS)
             ->setOperation($operation);
         $manager->persist($forecast1);
 
@@ -108,6 +110,7 @@ class ForecastTestFixtures extends Fixture implements FixtureGroupInterface
         $this->addReference(self::REF_OPERATION2, $operation2);
         $this->addReference(self::REF_FORECAST1,  $forecast1);
         $this->addReference(self::REF_FORECAST2,  $forecast2);
+        $this->addReference(self::REF_PART,       $part);
     }
 
     private function createUser(Role $role, string $email, ObjectManager $manager): User

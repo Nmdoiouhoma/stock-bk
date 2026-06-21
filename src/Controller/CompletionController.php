@@ -11,34 +11,29 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/operations/{id}/completions')]
 final class CompletionController extends AbstractController
 {
     #[Route('', name: 'completion_index', methods: ['GET'])]
+    #[IsGranted('ROLE_WORKER')]
     public function index(Operation $operation, CompletionRepository $completionRepository): JsonResponse
     {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $completions = $completionRepository->findBy(['operation' => $operation], ['date' => 'DESC']);
 
         return $this->json(array_map(fn(Completion $c) => $this->toArray($c), $completions));
     }
 
     #[Route('', name: 'completion_create', methods: ['POST'])]
+    #[IsGranted('ROLE_WORKER')]
     public function create(
         Operation $operation,
         Request $request,
         EntityManagerInterface $em,
         ValidatorInterface $validator
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -75,6 +70,9 @@ final class CompletionController extends AbstractController
             return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $part = $operation->getRouting()->getPart();
+        $part->setStockQuantity($part->getStockQuantity() + $completion->getActualQuantity());
+
         $em->persist($completion);
         $em->flush();
 
@@ -82,6 +80,7 @@ final class CompletionController extends AbstractController
     }
 
     #[Route('/{cId}', name: 'completion_update', methods: ['PUT'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function update(
         Operation $operation,
         int $cId,
@@ -90,10 +89,6 @@ final class CompletionController extends AbstractController
         ValidatorInterface $validator,
         CompletionRepository $completionRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $completion = $completionRepository->find($cId);
         if ($completion === null || $completion->getOperation() !== $operation) {
             return $this->json(['error' => 'Réalisation introuvable.'], Response::HTTP_NOT_FOUND);
@@ -104,6 +99,8 @@ final class CompletionController extends AbstractController
         if (!is_array($data)) {
             return $this->json(['error' => 'JSON invalide'], Response::HTTP_BAD_REQUEST);
         }
+
+        $oldQuantity = $completion->getActualQuantity();
 
         if (array_key_exists('date', $data)) {
             $date = \DateTime::createFromFormat('Y-m-d', $data['date']);
@@ -132,26 +129,32 @@ final class CompletionController extends AbstractController
             return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $diff = $completion->getActualQuantity() - $oldQuantity;
+        if ($diff !== 0) {
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() + $diff);
+        }
+
         $em->flush();
 
         return $this->json($this->toArray($completion));
     }
 
     #[Route('/{cId}', name: 'completion_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function delete(
         Operation $operation,
         int $cId,
         EntityManagerInterface $em,
         CompletionRepository $completionRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $completion = $completionRepository->find($cId);
         if ($completion === null || $completion->getOperation() !== $operation) {
             return $this->json(['error' => 'Réalisation introuvable.'], Response::HTTP_NOT_FOUND);
         }
+
+        $part = $operation->getRouting()->getPart();
+        $part->setStockQuantity($part->getStockQuantity() - $completion->getActualQuantity());
 
         $em->remove($completion);
         $em->flush();
@@ -162,12 +165,12 @@ final class CompletionController extends AbstractController
     private function toArray(Completion $c): array
     {
         return [
-            'id' => $c->getId(),
-            'date' => $c->getDate()?->format('Y-m-d'),
+            'id'             => $c->getId(),
+            'date'           => $c->getDate()?->format('Y-m-d'),
             'actualQuantity' => $c->getActualQuantity(),
             'actualDuration' => $c->getActualDuration(),
-            'operation' => $c->getOperation() ? [
-                'id' => $c->getOperation()->getId(),
+            'operation'      => $c->getOperation() ? [
+                'id'    => $c->getOperation()->getId(),
                 'label' => $c->getOperation()->getLabel(),
             ] : null,
         ];
@@ -178,7 +181,7 @@ final class CompletionController extends AbstractController
         $formatted = [];
         foreach ($errors as $error) {
             $formatted[] = [
-                'field' => $error->getPropertyPath(),
+                'field'   => $error->getPropertyPath(),
                 'message' => $error->getMessage(),
             ];
         }

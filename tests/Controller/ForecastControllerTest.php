@@ -4,6 +4,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\Forecast;
 use App\Entity\Operation;
+use App\Entity\Part;
 use App\Tests\DataFixtures\ForecastTestFixtures;
 use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
 use Doctrine\Common\DataFixtures\Purger\ORMPurger;
@@ -176,7 +177,7 @@ class ForecastControllerTest extends WebTestCase
         $this->assertArrayHasKey('id', $data);
         $this->assertSame('2026-09-01', $data['plannedDate']);
         $this->assertSame(75, $data['plannedQuantity']);
-        $this->assertSame('pending', $data['status']);
+        $this->assertSame('in_progress', $data['status']);
         $this->assertSame($this->opId(), $data['operation']['id']);
     }
 
@@ -377,5 +378,125 @@ class ForecastControllerTest extends WebTestCase
         $this->client->request('DELETE', '/api/operations/' . $this->op2Id() . '/forecasts/' . $this->fc1Id());
 
         $this->assertResponseStatusCodeSame(404);
+    }
+
+    // ── Stock updates ────────────────────────────────────────
+
+    private function stockQuantity(): int
+    {
+        $part = $this->fixtures->getReference(ForecastTestFixtures::REF_PART, Part::class);
+        $this->em->refresh($part);
+
+        return $part->getStockQuantity();
+    }
+
+    public function testCreateWithCompletedStatusIncrementsStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+        $before = $this->stockQuantity();
+
+        $this->client->request('POST', $this->baseUrl(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'plannedDate'     => '2026-09-01',
+            'plannedQuantity' => 40,
+            'status'          => 'completed',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $this->assertSame($before + 40, $this->stockQuantity());
+    }
+
+    public function testCreateWithNonCompletedStatusDoesNotChangeStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+        $before = $this->stockQuantity();
+
+        $this->client->request('POST', $this->baseUrl(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'plannedDate'     => '2026-09-01',
+            'plannedQuantity' => 40,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $this->assertSame($before, $this->stockQuantity());
+    }
+
+    public function testUpdateStatusToCompletedIncrementsStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+        $before = $this->stockQuantity();
+
+        // fc1 is IN_PROGRESS with plannedQuantity=100
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'status' => 'completed',
+        ]));
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSame($before + 100, $this->stockQuantity());
+    }
+
+    public function testUpdateStatusFromCompletedDecrementsStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+
+        // First complete fc1
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'status' => 'completed',
+        ]));
+        $after_complete = $this->stockQuantity();
+
+        // Then revert to in_progress
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'status' => 'in_progress',
+        ]));
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSame($after_complete - 100, $this->stockQuantity());
+    }
+
+    public function testUpdateQuantityWhenCompletedAdjustsDelta(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+
+        // Complete fc1 (plannedQuantity=100)
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'status' => 'completed',
+        ]));
+        $after_complete = $this->stockQuantity();
+
+        // Increase quantity from 100 to 150
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'plannedQuantity' => 150,
+        ]));
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSame($after_complete + 50, $this->stockQuantity());
+    }
+
+    public function testDeleteCompletedForecastDecrementsStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+
+        // Complete fc1 first
+        $this->client->request('PUT', $this->baseUrl() . '/' . $this->fc1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'status' => 'completed',
+        ]));
+        $after_complete = $this->stockQuantity();
+
+        // Delete it
+        $this->client->request('DELETE', $this->baseUrl() . '/' . $this->fc1Id());
+
+        $this->assertResponseStatusCodeSame(204);
+        $this->assertSame($after_complete - 100, $this->stockQuantity());
+    }
+
+    public function testDeleteNonCompletedForecastDoesNotChangeStock(): void
+    {
+        $this->loginAs(ForecastTestFixtures::SUPERVISOR_EMAIL);
+        $before = $this->stockQuantity();
+
+        // fc1 is IN_PROGRESS, delete it without completing
+        $this->client->request('DELETE', $this->baseUrl() . '/' . $this->fc1Id());
+
+        $this->assertResponseStatusCodeSame(204);
+        $this->assertSame($before, $this->stockQuantity());
     }
 }

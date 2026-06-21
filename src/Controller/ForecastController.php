@@ -12,34 +12,29 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/operations/{id}/forecasts')]
 final class ForecastController extends AbstractController
 {
     #[Route('', name: 'forecast_index', methods: ['GET'])]
+    #[IsGranted('ROLE_WORKER')]
     public function index(Operation $operation, ForecastRepository $forecastRepository): JsonResponse
     {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $forecasts = $forecastRepository->findBy(['operation' => $operation], ['plannedDate' => 'ASC']);
 
         return $this->json(array_map(fn(Forecast $f) => $this->toArray($f), $forecasts));
     }
 
     #[Route('', name: 'forecast_create', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function create(
         Operation $operation,
         Request $request,
         EntityManagerInterface $em,
         ValidatorInterface $validator
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -59,7 +54,7 @@ final class ForecastController extends AbstractController
             return $this->json(['error' => 'Le champ "plannedQuantity" est obligatoire et doit être un entier positif.'], Response::HTTP_BAD_REQUEST);
         }
 
-        $status = ForecastStatus::PENDING;
+        $status = ForecastStatus::IN_PROGRESS;
         if (isset($data['status'])) {
             $status = ForecastStatus::tryFrom($data['status']);
             if ($status === null) {
@@ -78,6 +73,11 @@ final class ForecastController extends AbstractController
             return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        if ($status === ForecastStatus::COMPLETED) {
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() + $forecast->getPlannedQuantity());
+        }
+
         $em->persist($forecast);
         $em->flush();
 
@@ -85,6 +85,7 @@ final class ForecastController extends AbstractController
     }
 
     #[Route('/{fId}', name: 'forecast_update', methods: ['PUT'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function update(
         Operation $operation,
         int $fId,
@@ -93,10 +94,6 @@ final class ForecastController extends AbstractController
         ValidatorInterface $validator,
         ForecastRepository $forecastRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $forecast = $forecastRepository->find($fId);
         if ($forecast === null || $forecast->getOperation() !== $operation) {
             return $this->json(['error' => 'Prévision introuvable.'], Response::HTTP_NOT_FOUND);
@@ -107,6 +104,9 @@ final class ForecastController extends AbstractController
         if (!is_array($data)) {
             return $this->json(['error' => 'JSON invalide'], Response::HTTP_BAD_REQUEST);
         }
+
+        $oldStatus          = $forecast->getStatus();
+        $oldPlannedQuantity = $forecast->getPlannedQuantity();
 
         if (array_key_exists('plannedDate', $data)) {
             $plannedDate = \DateTime::createFromFormat('Y-m-d', $data['plannedDate']);
@@ -136,25 +136,46 @@ final class ForecastController extends AbstractController
             return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $newStatus          = $forecast->getStatus();
+        $newPlannedQuantity = $forecast->getPlannedQuantity();
+        $wasCompleted       = $oldStatus === ForecastStatus::COMPLETED;
+        $isCompleted        = $newStatus === ForecastStatus::COMPLETED;
+
+        if (!$wasCompleted && $isCompleted) {
+            // transition → completed : on crédite le stock
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() + $newPlannedQuantity);
+        } elseif ($wasCompleted && !$isCompleted) {
+            // transition completed → autre : on annule le crédit
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() - $oldPlannedQuantity);
+        } elseif ($wasCompleted && $isCompleted && $newPlannedQuantity !== $oldPlannedQuantity) {
+            // toujours completed mais quantité modifiée : on ajuste le delta
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() + ($newPlannedQuantity - $oldPlannedQuantity));
+        }
+
         $em->flush();
 
         return $this->json($this->toArray($forecast));
     }
 
     #[Route('/{fId}', name: 'forecast_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function delete(
         Operation $operation,
         int $fId,
         EntityManagerInterface $em,
         ForecastRepository $forecastRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
-
         $forecast = $forecastRepository->find($fId);
         if ($forecast === null || $forecast->getOperation() !== $operation) {
             return $this->json(['error' => 'Prévision introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($forecast->getStatus() === ForecastStatus::COMPLETED) {
+            $part = $operation->getRouting()->getPart();
+            $part->setStockQuantity($part->getStockQuantity() - $forecast->getPlannedQuantity());
         }
 
         $em->remove($forecast);
@@ -166,12 +187,12 @@ final class ForecastController extends AbstractController
     private function toArray(Forecast $f): array
     {
         return [
-            'id' => $f->getId(),
-            'plannedDate' => $f->getPlannedDate()?->format('Y-m-d'),
+            'id'              => $f->getId(),
+            'plannedDate'     => $f->getPlannedDate()?->format('Y-m-d'),
             'plannedQuantity' => $f->getPlannedQuantity(),
-            'status' => $f->getStatus()->value,
-            'operation' => $f->getOperation() ? [
-                'id' => $f->getOperation()->getId(),
+            'status'          => $f->getStatus()->value,
+            'operation'       => $f->getOperation() ? [
+                'id'    => $f->getOperation()->getId(),
                 'label' => $f->getOperation()->getLabel(),
             ] : null,
         ];
@@ -182,7 +203,7 @@ final class ForecastController extends AbstractController
         $formatted = [];
         foreach ($errors as $error) {
             $formatted[] = [
-                'field' => $error->getPropertyPath(),
+                'field'   => $error->getPropertyPath(),
                 'message' => $error->getMessage(),
             ];
         }

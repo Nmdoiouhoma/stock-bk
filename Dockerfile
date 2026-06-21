@@ -5,6 +5,7 @@ RUN apk add --no-cache \
     icu-dev \
     oniguruma-dev \
     libzip-dev \
+    openssl \
     && docker-php-ext-install \
         pdo_pgsql \
         intl \
@@ -42,8 +43,8 @@ FROM base AS prod
 ENV APP_ENV=prod
 
 COPY --from=vendor /app /app
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-RUN php bin/console cache:warmup --env=prod
-
-EXPOSE 8000
-CMD ["php", "-S", "0.0.0.0:8000", "-t", "public"]
+EXPOSE 10000
+ENTRYPOINT ["/entrypoint.sh"]
