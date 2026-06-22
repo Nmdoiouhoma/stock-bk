@@ -21,7 +21,7 @@ services:
         sync: false   # à renseigner manuellement dans le dashboard Render
 
 databases:
-  - name: stock-db
+  - name: pingpong-db
     plan: free
     databaseName: stock_db
     user: stock_user
