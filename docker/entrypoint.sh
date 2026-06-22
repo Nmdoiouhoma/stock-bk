@@ -43,4 +43,7 @@ echo "Database ready."
 # Run migrations
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod
 
+# Seed initial data if database is empty
+php bin/console app:seed --env=prod
+
 exec php -S 0.0.0.0:${PORT} -t public public/index.php
