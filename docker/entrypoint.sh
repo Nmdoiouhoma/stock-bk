@@ -13,10 +13,21 @@ fi
 # Warm up cache
 php bin/console cache:warmup --env=prod --no-debug
 
-# Wait for the database to be reachable before running migrations
+# Show which DB host we are targeting (no password)
+DB_HOST=$(php -r "echo parse_url(getenv('DATABASE_URL'), PHP_URL_HOST);")
+DB_PORT=$(php -r "\$p = parse_url(getenv('DATABASE_URL'), PHP_URL_PORT); echo \$p ?: 5432;")
+DB_NAME=$(php -r "echo ltrim(parse_url(getenv('DATABASE_URL'), PHP_URL_PATH), '/');")
+echo "Connecting to DB: host=$DB_HOST port=$DB_PORT db=$DB_NAME"
+
+# Wait for the database using a direct TCP + PDO check
 echo "Waiting for database..."
 RETRIES=30
-until php bin/console doctrine:query:sql "SELECT 1" --env=prod > /dev/null 2>&1 || [ "$RETRIES" -eq 0 ]; do
+until php -r "
+  \$url = getenv('DATABASE_URL');
+  \$p   = parse_url(\$url);
+  \$dsn = 'pgsql:host='.\$p['host'].';port='.(\$p['port']??5432).';dbname='.ltrim(\$p['path'],'/');
+  new PDO(\$dsn, \$p['user'], \$p['pass']);
+" > /dev/null 2>&1 || [ "$RETRIES" -eq 0 ]; do
     echo "  database not ready, retrying in 2s... ($RETRIES left)"
     RETRIES=$((RETRIES - 1))
     sleep 2
@@ -26,6 +37,8 @@ if [ "$RETRIES" -eq 0 ]; then
     echo "ERROR: database did not become ready in time. Check DATABASE_URL env var."
     exit 1
 fi
+
+echo "Database ready."
 
 # Run migrations
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod
