@@ -20,7 +20,7 @@ final class Version20260616091019 extends AbstractMigration
     public function up(Schema $schema): void
     {
         // this up() migration is auto-generated, please modify it to your needs
-        $this->addSql('ALTER TABLE part DROP stock_min');
+        $this->addSql('ALTER TABLE part DROP COLUMN IF EXISTS stock_min');
     }
 
     public function down(Schema $schema): void

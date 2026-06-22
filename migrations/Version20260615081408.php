@@ -20,9 +20,8 @@ final class Version20260615081408 extends AbstractMigration
     public function up(Schema $schema): void
     {
         // this up() migration is auto-generated, please modify it to your needs
-    $this->addSql('ALTER TABLE part ADD catalog_price DOUBLE PRECISION DEFAULT NULL');
-    // Make password nullable to avoid failing on existing rows without a password
-    $this->addSql('ALTER TABLE "user" ADD password VARCHAR(255) DEFAULT NULL');
+    $this->addSql('ALTER TABLE part ADD COLUMN IF NOT EXISTS catalog_price DOUBLE PRECISION DEFAULT NULL');
+    $this->addSql('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password VARCHAR(255) DEFAULT NULL');
     }
 
     public function down(Schema $schema): void
