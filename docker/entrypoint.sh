@@ -43,4 +43,4 @@ echo "Database ready."
 # Run migrations
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod
 
-exec php -S 0.0.0.0:${PORT} -t public
+exec php -S 0.0.0.0:${PORT} -t public public/index.php
