@@ -33,36 +33,28 @@ final class Version20260611121500 extends AbstractMigration
 
         // Drop old foreign keys if they still exist (attempt several known names), then add new FKs to match entities
         // routing.part_id -> part.id
-        $this->addSql('ALTER TABLE routing DROP CONSTRAINT IF EXISTS FK_C32E1468C40FCFA8');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_routing_part') THEN EXECUTE 'ALTER TABLE routing ADD CONSTRAINT fk_routing_part FOREIGN KEY (part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'routing') THEN ALTER TABLE routing DROP CONSTRAINT IF EXISTS FK_C32E1468C40FCFA8; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_routing_part') THEN EXECUTE 'ALTER TABLE routing ADD CONSTRAINT fk_routing_part FOREIGN KEY (part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
         // machine.workstation_id -> workstation.id
-        $this->addSql('ALTER TABLE machine DROP CONSTRAINT IF EXISTS FK_1505DF8417A47EE6');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_machine_workstation') THEN EXECUTE 'ALTER TABLE machine ADD CONSTRAINT fk_machine_workstation FOREIGN KEY (workstation_id) REFERENCES workstation (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'machine') THEN ALTER TABLE machine DROP CONSTRAINT IF EXISTS FK_1505DF8417A47EE6; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_machine_workstation') THEN EXECUTE 'ALTER TABLE machine ADD CONSTRAINT fk_machine_workstation FOREIGN KEY (workstation_id) REFERENCES workstation (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
         // bill_of_materials parent/child -> part
-        $this->addSql('ALTER TABLE bill_of_materials DROP CONSTRAINT IF EXISTS FK_799A36525BC26379');
-        $this->addSql('ALTER TABLE bill_of_materials DROP CONSTRAINT IF EXISTS FK_799A36524E08B20C');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_bom_parent_part') THEN EXECUTE 'ALTER TABLE bill_of_materials ADD CONSTRAINT fk_bom_parent_part FOREIGN KEY (parent_part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; END $$;");
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_bom_child_part') THEN EXECUTE 'ALTER TABLE bill_of_materials ADD CONSTRAINT fk_bom_child_part FOREIGN KEY (child_part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bill_of_materials') THEN ALTER TABLE bill_of_materials DROP CONSTRAINT IF EXISTS FK_799A36525BC26379; ALTER TABLE bill_of_materials DROP CONSTRAINT IF EXISTS FK_799A36524E08B20C; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_bom_parent_part') THEN EXECUTE 'ALTER TABLE bill_of_materials ADD CONSTRAINT fk_bom_parent_part FOREIGN KEY (parent_part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_bom_child_part') THEN EXECUTE 'ALTER TABLE bill_of_materials ADD CONSTRAINT fk_bom_child_part FOREIGN KEY (child_part_id) REFERENCES part (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
         // operation.routing_id -> routing.id
-        $this->addSql('ALTER TABLE operation DROP CONSTRAINT IF EXISTS FK_1981A66DD2FD85F1');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_operation_routing') THEN EXECUTE 'ALTER TABLE operation ADD CONSTRAINT fk_operation_routing FOREIGN KEY (routing_id) REFERENCES routing (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'operation') THEN ALTER TABLE operation DROP CONSTRAINT IF EXISTS FK_1981A66DD2FD85F1; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_operation_routing') THEN EXECUTE 'ALTER TABLE operation ADD CONSTRAINT fk_operation_routing FOREIGN KEY (routing_id) REFERENCES routing (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
         // forecast.operation_id and completion.operation_id -> operation.id
-        $this->addSql('ALTER TABLE forecast DROP CONSTRAINT IF EXISTS FK_1EEB1DDE44AC3583');
-        $this->addSql('ALTER TABLE completion DROP CONSTRAINT IF EXISTS FK_EAA5610E44AC3583');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_forecast_operation') THEN EXECUTE 'ALTER TABLE forecast ADD CONSTRAINT fk_forecast_operation FOREIGN KEY (operation_id) REFERENCES operation (id) NOT DEFERRABLE'; END IF; END $$;");
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_completion_operation') THEN EXECUTE 'ALTER TABLE completion ADD CONSTRAINT fk_completion_operation FOREIGN KEY (operation_id) REFERENCES operation (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'forecast') THEN ALTER TABLE forecast DROP CONSTRAINT IF EXISTS FK_1EEB1DDE44AC3583; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_forecast_operation') THEN EXECUTE 'ALTER TABLE forecast ADD CONSTRAINT fk_forecast_operation FOREIGN KEY (operation_id) REFERENCES operation (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'completion') THEN ALTER TABLE completion DROP CONSTRAINT IF EXISTS FK_EAA5610E44AC3583; IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_completion_operation') THEN EXECUTE 'ALTER TABLE completion ADD CONSTRAINT fk_completion_operation FOREIGN KEY (operation_id) REFERENCES operation (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
         // part.supplier_id -> supplier.id (ensure constraint exists)
-        $this->addSql('ALTER TABLE part DROP CONSTRAINT IF EXISTS FK_44CA0B23670C757F');
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_part_supplier') THEN EXECUTE 'ALTER TABLE part ADD CONSTRAINT fk_part_supplier FOREIGN KEY (supplier_id) REFERENCES supplier (id) NOT DEFERRABLE'; END IF; END $$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'part') THEN ALTER TABLE part DROP CONSTRAINT IF EXISTS FK_44CA0B23670C757F; END IF; END \$\$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'part') THEN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_part_supplier') THEN EXECUTE 'ALTER TABLE part ADD CONSTRAINT fk_part_supplier FOREIGN KEY (supplier_id) REFERENCES supplier (id) NOT DEFERRABLE'; END IF; END IF; END \$\$;");
 
-        // Ensure unique/index names for references on renamed tables
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'uniq_part_reference') THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_part_reference ON part (reference)'; END IF; END $$;");
-        $this->addSql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'uniq_routing_reference') THEN EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_routing_reference ON routing (reference)'; END IF; END $$;");
+        // Ensure unique/index names for references on renamed tables (only if tables exist)
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'part') THEN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'uniq_part_reference') THEN EXECUTE 'CREATE UNIQUE INDEX uniq_part_reference ON part (reference)'; END IF; END IF; END \$\$;");
+        $this->addSql("DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'routing') THEN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'uniq_routing_reference') THEN EXECUTE 'CREATE UNIQUE INDEX uniq_routing_reference ON routing (reference)'; END IF; END IF; END \$\$;");
     }
 
     public function down(Schema $schema): void
