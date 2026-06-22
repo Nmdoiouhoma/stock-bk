@@ -23,5 +23,5 @@ services:
 databases:
   - name: pingpong-db
     plan: free
-    databaseName: stock_db
-    user: stock_user
+    databaseName: pingpong_sttk
+    user: pingpong
