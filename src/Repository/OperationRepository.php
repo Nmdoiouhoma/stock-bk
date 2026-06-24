@@ -17,23 +17,26 @@ class OperationRepository extends ServiceEntityRepository
     {
         $result = $this->createQueryBuilder('o')
             ->select('MAX(o.rank)')
-            ->andWhere('o.routing = :r')
-            ->setParameter('r', $routing)
+            ->join('o.routings', 'r')
+            ->andWhere('r = :routing')
+            ->setParameter('routing', $routing)
             ->getQuery()
             ->getSingleScalarResult();
 
-        if ($result === null) {
-            return null;
-        }
-
-        return (int) $result;
+        return $result !== null ? (int) $result : null;
     }
 
     public function findNeighbor(\App\Entity\Operation $operation, string $direction): ?Operation
     {
+        $routing = $operation->getRoutings()->first();
+        if (!$routing) {
+            return null;
+        }
+
         $qb = $this->createQueryBuilder('o')
-            ->andWhere('o.routing = :r')
-            ->setParameter('r', $operation->getRouting())
+            ->join('o.routings', 'r')
+            ->andWhere('r = :routing')
+            ->setParameter('routing', $routing)
             ->setMaxResults(1);
 
         if ($direction === 'up') {

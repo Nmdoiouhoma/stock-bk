@@ -4,7 +4,6 @@ namespace App\Tests\Controller;
 
 use App\Entity\Machine;
 use App\Entity\Operation;
-use App\Entity\Routing;
 use App\Entity\Workstation;
 use App\Tests\DataFixtures\OperationTestFixtures;
 use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
@@ -88,14 +87,12 @@ class OperationControllerTest extends WebTestCase
 
     // ── Authentication & Authorisation ───────────────────────
 
-    public function testUnauthenticatedRequestReturns403(): void
+    public function testUnauthenticatedRequestReturns401(): void
     {
-        // Le firewall JWT est lazy et /api/operations n'est pas dans access_control :
-        // la requête passe, le contrôleur lève une AccessDeniedHttpException → 403.
         $this->client->setServerParameters([]);
         $this->client->request('GET', '/api/operations');
 
-        $this->assertResponseStatusCodeSame(403);
+        $this->assertResponseStatusCodeSame(401);
     }
 
     public function testWorkerCannotCreateReturns403(): void
@@ -103,7 +100,7 @@ class OperationControllerTest extends WebTestCase
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label'         => 'OPTEST NEW',
             'unitTime'      => 5.0,
-            'routingId'     => $this->routingId(),
+            'routingIds'    => [$this->routingId()],
             'workstationId' => $this->wsId(),
         ]));
 
@@ -178,9 +175,9 @@ class OperationControllerTest extends WebTestCase
         $data = json_decode($this->client->getResponse()->getContent(), true);
         $this->assertSame($id, $data['id']);
         $this->assertSame('OPTEST 001', $data['label']);
-        $this->assertEquals(10.0, $data['unitTime']); // 10.0 → JSON int 10 → decoded as int
+        $this->assertEquals(10.0, $data['unitTime']);
         $this->assertSame(1, $data['rank']);
-        $this->assertArrayHasKey('routing', $data);
+        $this->assertArrayHasKey('routings', $data);
         $this->assertArrayHasKey('workstation', $data);
         $this->assertArrayHasKey('machine', $data);
         $this->assertNull($data['machine']);
@@ -202,7 +199,7 @@ class OperationControllerTest extends WebTestCase
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label'         => 'OPTEST NEW',
             'unitTime'      => 15.5,
-            'routingId'     => $this->routingId(),
+            'routingIds'    => [$this->routingId()],
             'workstationId' => $this->wsId(),
             'machineId'     => $this->machineId(),
         ]));
@@ -213,7 +210,7 @@ class OperationControllerTest extends WebTestCase
         $this->assertSame('OPTEST NEW', $data['label']);
         $this->assertSame(15.5, $data['unitTime']);
         $this->assertSame(3, $data['rank']); // fixture already has rank 1 and 2
-        $this->assertSame($this->routingId(), $data['routing']['id']);
+        $this->assertSame($this->routingId(), $data['routings'][0]['id']);
         $this->assertSame($this->wsId(), $data['workstation']['id']);
         $this->assertSame($this->machineId(), $data['machine']['id']);
     }
@@ -223,7 +220,7 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingId' => $this->routingId(), 'workstationId' => $this->wsId(),
+            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingIds' => [$this->routingId()], 'workstationId' => $this->wsId(),
         ]));
 
         $this->assertResponseStatusCodeSame(400);
@@ -237,7 +234,7 @@ class OperationControllerTest extends WebTestCase
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label'         => 'OPTEST NEW',
             'unitTime'      => 5.0,
-            'routingId'     => $this->routingId(),
+            'routingIds'    => [$this->routingId()],
             'workstationId' => $this->wsId(),
             'machineId'     => $this->machineId(),
         ]));
@@ -261,7 +258,7 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'unitTime' => 5.0, 'routingId' => $this->routingId(), 'workstationId' => $this->wsId(),
+            'unitTime' => 5.0, 'routingIds' => [$this->routingId()], 'workstationId' => $this->wsId(),
         ]));
 
         $this->assertResponseStatusCodeSame(400);
@@ -273,13 +270,13 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'label' => 'OPTEST NEW', 'routingId' => $this->routingId(), 'workstationId' => $this->wsId(),
+            'label' => 'OPTEST NEW', 'routingIds' => [$this->routingId()], 'workstationId' => $this->wsId(),
         ]));
 
         $this->assertResponseStatusCodeSame(400);
     }
 
-    public function testCreateWithMissingRoutingIdReturnsBadRequest(): void
+    public function testCreateWithMissingRoutingIdsReturnsBadRequest(): void
     {
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
@@ -295,7 +292,7 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingId' => 999999, 'workstationId' => $this->wsId(),
+            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingIds' => [999999], 'workstationId' => $this->wsId(),
         ]));
 
         $this->assertResponseStatusCodeSame(404);
@@ -306,7 +303,7 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingId' => $this->routingId(),
+            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingIds' => [$this->routingId()],
         ]));
 
         $this->assertResponseStatusCodeSame(400);
@@ -317,7 +314,7 @@ class OperationControllerTest extends WebTestCase
         $this->loginAs(OperationTestFixtures::ADMIN_EMAIL);
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingId' => $this->routingId(), 'workstationId' => 999999,
+            'label' => 'OPTEST NEW', 'unitTime' => 5.0, 'routingIds' => [$this->routingId()], 'workstationId' => 999999,
         ]));
 
         $this->assertResponseStatusCodeSame(404);
@@ -329,7 +326,7 @@ class OperationControllerTest extends WebTestCase
 
         $this->client->request('POST', '/api/operations', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'label' => 'OPTEST NEW', 'unitTime' => 5.0,
-            'routingId' => $this->routingId(), 'workstationId' => $this->wsId(),
+            'routingIds' => [$this->routingId()], 'workstationId' => $this->wsId(),
             'machineId' => 999999,
         ]));
 

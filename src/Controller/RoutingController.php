@@ -270,7 +270,7 @@ final class RoutingController extends AbstractController
         $operation = new Operation();
         $operation->setLabel(trim($data['label']));
         $operation->setUnitTime((float) $data['unitTime']);
-        $operation->setRouting($routing);
+        $operation->addRouting($routing);
         $operation->setWorkstation($workstation);
         $operation->setMachine($machine);
         $operation->setRank($rank);
@@ -285,21 +285,21 @@ final class RoutingController extends AbstractController
 
         // Return similar payload as OperationController::toArray
         return $this->json([
-            'id' => $operation->getId(),
-            'rank' => $operation->getRank(),
-            'label' => $operation->getLabel(),
+            'id'       => $operation->getId(),
+            'rank'     => $operation->getRank(),
+            'label'    => $operation->getLabel(),
             'unitTime' => $operation->getUnitTime(),
-            'routing' => [
-                'id' => $routing->getId(),
+            'routings' => [[
+                'id'        => $routing->getId(),
                 'reference' => $routing->getReference(),
-                'label' => $routing->getLabel(),
-            ],
+                'label'     => $routing->getLabel(),
+            ]],
             'workstation' => $operation->getWorkstation() ? [
-                'id' => $operation->getWorkstation()->getId(),
+                'id'    => $operation->getWorkstation()->getId(),
                 'label' => $operation->getWorkstation()->getLabel() ?? null,
             ] : null,
             'machine' => $operation->getMachine() ? [
-                'id' => $operation->getMachine()->getId(),
+                'id'    => $operation->getMachine()->getId(),
                 'label' => $operation->getMachine()->getLabel() ?? null,
             ] : null,
         ], Response::HTTP_CREATED);
@@ -310,10 +310,11 @@ final class RoutingController extends AbstractController
         usort($operations, fn(Operation $a, Operation $b) => $a->getRank() <=> $b->getRank());
 
         return [
-            'id'         => $routing->getId(),
-            'reference'  => $routing->getReference(),
-            'label'      => $routing->getLabel(),
-            'part'       => $routing->getPart() ? [
+            'id'              => $routing->getId(),
+            'reference'       => $routing->getReference(),
+            'label'           => $routing->getLabel(),
+            'operationsCount' => $routing->getOperations()->count(),
+            'part'            => $routing->getPart() ? [
                 'id'        => $routing->getPart()->getId(),
                 'reference' => $routing->getPart()->getReference(),
                 'label'     => $routing->getPart()->getLabel(),

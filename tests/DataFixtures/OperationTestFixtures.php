@@ -87,7 +87,7 @@ class OperationTestFixtures extends Fixture implements FixtureGroupInterface
         $op1 = (new Operation())
             ->setLabel('OPTEST 001')
             ->setUnitTime(10.0)
-            ->setRouting($routing)
+            ->addRouting($routing)
             ->setWorkstation($workstation)
             ->setRank(1);
         $manager->persist($op1);
@@ -95,7 +95,7 @@ class OperationTestFixtures extends Fixture implements FixtureGroupInterface
         $op2 = (new Operation())
             ->setLabel('OPTEST 002')
             ->setUnitTime(20.0)
-            ->setRouting($routing)
+            ->addRouting($routing)
             ->setWorkstation($workstation)
             ->setRank(2);
         $manager->persist($op2);
