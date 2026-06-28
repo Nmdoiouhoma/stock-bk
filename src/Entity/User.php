@@ -7,6 +7,7 @@ use App\Repository\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use App\Entity\Quote;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
@@ -36,6 +37,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\OneToMany(mappedBy: 'supervisor', targetEntity: Routing::class)]
     private Collection $routings;
+
+    #[ORM\OneToMany(mappedBy: 'client', targetEntity: Quote::class)]
+    private Collection $quotes;
     
     #[ORM\ManyToMany(targetEntity: Workstation::class, inversedBy: 'qualifiedUsers')]
     #[ORM\JoinTable(name: 'user_workstation')]
@@ -44,7 +48,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function __construct()
     {
         $this->routings = new ArrayCollection();
-    $this->workstations = new ArrayCollection();
+        $this->workstations = new ArrayCollection();
+        $this->quotes = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -156,6 +161,35 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeWorkstation(Workstation $workstation): static
     {
         $this->workstations->removeElement($workstation);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Quote>
+     */
+    public function getQuotes(): Collection
+    {
+        return $this->quotes;
+    }
+
+    public function addQuote(Quote $quote): static
+    {
+        if (!$this->quotes->contains($quote)) {
+            $this->quotes->add($quote);
+            $quote->setClient($this);
+        }
+
+        return $this;
+    }
+
+    public function removeQuote(Quote $quote): static
+    {
+        if ($this->quotes->removeElement($quote)) {
+            if ($quote->getClient() === $this) {
+                $quote->setClient(null);
+            }
+        }
 
         return $this;
     }

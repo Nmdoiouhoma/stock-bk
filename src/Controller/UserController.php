@@ -14,10 +14,18 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
-#[Route('/api/users')]
 class UserController extends AbstractController
 {
-    #[Route('/supervisors', name: 'user_supervisors', methods: ['GET'])]
+    #[Route('/api/clients', name: 'client_index', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function clients(UserRepository $repository): JsonResponse
+    {
+        $clients = $repository->findBy(['role' => Role::Customer]);
+
+        return $this->json(array_map(fn(User $u) => $this->toArray($u), $clients));
+    }
+
+    #[Route('/api/users/supervisors', name: 'user_supervisors', methods: ['GET'])]
     #[IsGranted('ROLE_SUPERVISOR')]
     public function supervisorsList(UserRepository $repository): JsonResponse
     {
@@ -26,7 +34,7 @@ class UserController extends AbstractController
         return $this->json(array_map(fn(User $u) => $this->toArray($u), $users));
     }
 
-    #[Route('', name: 'user_index', methods: ['GET'])]
+    #[Route('/api/users', name: 'user_index', methods: ['GET'])]
     #[IsGranted('ROLE_ADMIN')]
     public function index(UserRepository $repository): JsonResponse
     {
@@ -35,7 +43,7 @@ class UserController extends AbstractController
         return $this->json(array_map(fn(User $u) => $this->toArray($u), $users));
     }
 
-    #[Route('', name: 'user_create', methods: ['POST'])]
+    #[Route('/api/users', name: 'user_create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
     public function create(
         Request $request,
@@ -74,14 +82,14 @@ class UserController extends AbstractController
         return $this->json($this->toArray($user), Response::HTTP_CREATED);
     }
 
-    #[Route('/{id}', name: 'user_show', methods: ['GET'])]
+    #[Route('/api/users/{id}', name: 'user_show', methods: ['GET'])]
     #[IsGranted('ROLE_ADMIN')]
     public function show(User $user): JsonResponse
     {
         return $this->json($this->toArray($user));
     }
 
-    #[Route('/{id}', name: 'user_update', methods: ['PUT'])]
+    #[Route('/api/users/{id}', name: 'user_update', methods: ['PUT'])]
     #[IsGranted('ROLE_ADMIN')]
     public function update(
         User $user,
@@ -123,7 +131,7 @@ class UserController extends AbstractController
         return $this->json($this->toArray($user));
     }
 
-    #[Route('/{id}', name: 'user_delete', methods: ['DELETE'])]
+    #[Route('/api/users/{id}', name: 'user_delete', methods: ['DELETE'])]
     #[IsGranted('ROLE_ADMIN')]
     public function delete(User $user, EntityManagerInterface $em): JsonResponse
     {

@@ -5,14 +5,19 @@ namespace App\DataFixtures;
 use App\Entity\BillOfMaterials;
 use App\Entity\Machine;
 use App\Entity\Operation;
+use App\Entity\Order;
 use App\Entity\Part;
 use App\Entity\ProductionOrder;
+use App\Entity\Quote;
+use App\Entity\QuoteLine;
 use App\Entity\Routing;
 use App\Entity\Supplier;
 use App\Entity\User;
 use App\Entity\Workstation;
 use App\Enum\OperationStatus;
+use App\Enum\OrderStatus;
 use App\Enum\PieceType;
+use App\Enum\QuoteStatus;
 use App\Enum\Role;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
@@ -40,6 +45,8 @@ class AppFixtures extends Fixture
         $this->loadUserWorkstations($users, $workstations);
         $this->loadBoms($manager, $parts);
         $this->loadProductionOrders($manager, $operations);
+        $quotes = $this->loadQuotes($manager, $users, $parts);
+        $this->loadOrders($manager, $quotes);
 
         $manager->flush();
     }
@@ -72,7 +79,11 @@ class AppFixtures extends Fixture
             ['Marie',   'Dupont',    'admin@atelier.fr',           Role::Admin,      'AdminPass1234!'],
             ['Jean',    'Martin',    'jean.martin@atelier.fr',     Role::Worker,     'WorkerJean1!'],
             ['Sophie',  'Leclerc',   'sophie.leclerc@atelier.fr',  Role::Worker,     'WorkerSophie2!'],
-            ['Pierre',  'Bernard',   'client@exemple.fr',          Role::Customer,   'ClientPierre!'],
+            ['Pierre',  'Bernard',   'pierre.bernard@exemple.fr',  Role::Customer,   'ClientPierre!'],
+            ['Lucie',   'Fontaine',  'lucie.fontaine@exemple.fr',  Role::Customer,   'ClientLucie!'],
+            ['Marc',    'Aubert',    'marc.aubert@exemple.fr',     Role::Customer,   'ClientMarc!'],
+            ['Chloé',   'Girard',    'chloe.girard@exemple.fr',    Role::Customer,   'ClientChloe!'],
+            ['Nicolas', 'Chevalier', 'nicolas.chevalier@ex.fr',    Role::Customer,   'ClientNicolas!'],
             ['Luc',     'Moreau',    'commercial@atelier.fr',      Role::Seller,     'SellerLuc!'],
             ['Alice',   'Renard',    'supervisor@atelier.fr',      Role::Supervisor, 'SupervisorAlice!'],
             ['Thomas',  'Petit',     'thomas.petit@atelier.fr',    Role::Worker,     'WorkerThomas3!'],
@@ -296,6 +307,62 @@ class AppFixtures extends Fixture
                 ->setUnit($unit);
             $manager->persist($bom);
         }
+    }
+
+    /** @return Quote[] */
+    private function loadQuotes(ObjectManager $manager, array $users, array $parts): array
+    {
+        $pierre = $users[3]; // Customer
+        $lucie  = $users[4]; // Customer
+        $marc   = $users[5]; // Customer
+
+        $tablePro     = $parts[7]; // Finished, salePrice=599
+        $tableCompact = $parts[8]; // Finished, salePrice=349
+        $setRaquettes = $parts[9]; // Finished, salePrice=24
+
+        $data = [
+            ['DEV-2024-001', $pierre, '+30 days', QuoteStatus::PENDING,   '1198.00', [[$tablePro, 2, '599.00']]],
+            ['DEV-2024-002', $lucie,  '+15 days', QuoteStatus::ACCEPTED,  '1047.00', [[$tableCompact, 2, '349.00'], [$setRaquettes, 3, '24.00']]],
+            ['DEV-2024-003', $marc,   '-5 days',  QuoteStatus::EXPIRED,   '72.00',   [[$setRaquettes, 3, '24.00']]],
+            ['DEV-2024-004', $pierre, '+60 days', QuoteStatus::PENDING,   '623.00',  [[$tablePro, 1, '599.00'], [$setRaquettes, 1, '24.00']]],
+        ];
+
+        $quotes = [];
+        foreach ($data as [$ref, $client, $deadlineOffset, $status, $total, $lines]) {
+            $quote = (new Quote())
+                ->setReference($ref)
+                ->setClient($client)
+                ->setCreatedAt(new \DateTimeImmutable())
+                ->setDeadline(new \DateTimeImmutable($deadlineOffset))
+                ->setStatus($status)
+                ->setTotalAmount($total);
+
+            foreach ($lines as [$part, $qty, $unitPrice]) {
+                $line = (new QuoteLine())->setPart($part)->setQuantity($qty)->setUnitPrice($unitPrice);
+                $quote->addLine($line);
+            }
+
+            $manager->persist($quote);
+            $quotes[] = $quote;
+        }
+
+        return $quotes;
+    }
+
+    private function loadOrders(ObjectManager $manager, array $quotes): void
+    {
+        $acceptedQuote = $quotes[1]; // DEV-2024-002, Lucie, ACCEPTED
+
+        $order = (new Order())
+            ->setQuote($acceptedQuote)
+            ->setCreatedAt(new \DateTimeImmutable())
+            ->setStatus(OrderStatus::IN_PROGRESS);
+
+        foreach ($acceptedQuote->getLines() as $quoteLine) {
+            $order->addLine($quoteLine);
+        }
+
+        $manager->persist($order);
     }
 
     private function loadProductionOrders(ObjectManager $manager, array $operations): void
