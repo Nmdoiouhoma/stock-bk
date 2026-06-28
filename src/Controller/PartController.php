@@ -146,6 +146,20 @@ class PartController extends AbstractController
     #[IsGranted('ROLE_ADMIN')]
     public function delete(Part $part, EntityManagerInterface $em): JsonResponse
     {
+        if (!$part->getRoutings()->isEmpty()) {
+            return $this->json(
+                ['error' => 'Impossible de supprimer cette pièce : elle est associée à une ou plusieurs gammes.'],
+                Response::HTTP_CONFLICT
+            );
+        }
+
+        if (!$part->getParentBoms()->isEmpty() || !$part->getChildBoms()->isEmpty()) {
+            return $this->json(
+                ['error' => 'Impossible de supprimer cette pièce : elle est référencée dans une nomenclature.'],
+                Response::HTTP_CONFLICT
+            );
+        }
+
         $em->remove($part);
         $em->flush();
 

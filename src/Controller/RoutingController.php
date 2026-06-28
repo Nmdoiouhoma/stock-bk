@@ -304,6 +304,52 @@ final class RoutingController extends AbstractController
             ] : null,
         ], Response::HTTP_CREATED);
     }
+    #[Route('/{id}/operations/{opId}', name: 'routing_operation_add', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function addOperation(
+        Routing $routing,
+        int $opId,
+        OperationRepository $operationRepository,
+        EntityManagerInterface $em
+    ): JsonResponse {
+        $operation = $operationRepository->find($opId);
+        if ($operation === null) {
+            return $this->json(['error' => 'Opération introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($operation->getRoutings()->contains($routing)) {
+            return $this->json(['error' => 'Cette opération est déjà associée à cette gamme.'], Response::HTTP_CONFLICT);
+        }
+
+        $operation->addRouting($routing);
+        $em->flush();
+
+        return $this->json($this->toArray($routing), Response::HTTP_OK);
+    }
+
+    #[Route('/{id}/operations/{opId}', name: 'routing_operation_remove', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function removeOperation(
+        Routing $routing,
+        int $opId,
+        OperationRepository $operationRepository,
+        EntityManagerInterface $em
+    ): JsonResponse {
+        $operation = $operationRepository->find($opId);
+        if ($operation === null) {
+            return $this->json(['error' => 'Opération introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$operation->getRoutings()->contains($routing)) {
+            return $this->json(['error' => 'Cette opération n\'est pas associée à cette gamme.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $operation->removeRouting($routing);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
     private function toArray(Routing $routing): array
     {
         $operations = $routing->getOperations()->toArray();
