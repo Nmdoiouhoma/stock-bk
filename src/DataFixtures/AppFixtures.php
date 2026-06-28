@@ -3,16 +3,15 @@
 namespace App\DataFixtures;
 
 use App\Entity\BillOfMaterials;
-use App\Entity\Completion;
-use App\Entity\Forecast;
 use App\Entity\Machine;
 use App\Entity\Operation;
 use App\Entity\Part;
+use App\Entity\ProductionOrder;
 use App\Entity\Routing;
 use App\Entity\Supplier;
 use App\Entity\User;
 use App\Entity\Workstation;
-use App\Enum\ForecastStatus;
+use App\Enum\OperationStatus;
 use App\Enum\PieceType;
 use App\Enum\Role;
 use Doctrine\Bundle\FixturesBundle\Fixture;
@@ -40,8 +39,7 @@ class AppFixtures extends Fixture
         $operations   = $this->loadOperations($manager, $routings, $workstations, $machines);
         $this->loadUserWorkstations($users, $workstations);
         $this->loadBoms($manager, $parts);
-        $this->loadForecasts($manager, $operations);
-        $this->loadCompletions($manager, $operations);
+        $this->loadProductionOrders($manager, $operations);
 
         $manager->flush();
     }
@@ -261,7 +259,7 @@ class AppFixtures extends Fixture
             $op = (new Operation())
                 ->setRank($rank)
                 ->setLabel($label)
-                ->setRouting($routing)
+                ->addRouting($routing)
                 ->setWorkstation($ws)
                 ->setMachine($machine)
                 ->setUnitTime($unitTime);
@@ -300,55 +298,37 @@ class AppFixtures extends Fixture
         }
     }
 
-    private function loadForecasts(ObjectManager $manager, array $operations): void
+    private function loadProductionOrders(ObjectManager $manager, array $operations): void
     {
-        $statuses = [ForecastStatus::PENDING, ForecastStatus::IN_PROGRESS, ForecastStatus::COMPLETED];
-
         $data = [
-            // operation index, plannedDate,   qty,  status
-            [5,  '+7 days',   20, ForecastStatus::PENDING],
-            [6,  '+7 days',   20, ForecastStatus::PENDING],
-            [7,  '+8 days',   20, ForecastStatus::PENDING],
-            [8,  '+9 days',   20, ForecastStatus::PENDING],
-            [9,  '+3 days',   30, ForecastStatus::IN_PROGRESS],
-            [10, '+3 days',   30, ForecastStatus::IN_PROGRESS],
-            [11, '+4 days',   30, ForecastStatus::IN_PROGRESS],
-            [12, '-5 days',   15, ForecastStatus::COMPLETED],
-            [12, '-2 days',   10, ForecastStatus::COMPLETED],
-            [13, '+14 days',  50, ForecastStatus::PENDING],
+            // operation index, plannedDate,  plannedQty, actualQty, actualDuration, status
+            [0,  '-30 days',   50,  50,   28.0, OperationStatus::COMPLETED],
+            [1,  '-30 days',   50,  50,   52.0, OperationStatus::COMPLETED],
+            [2,  '-29 days',   50,  50,   38.0, OperationStatus::COMPLETED],
+            [3,  '-28 days',   60,  60,   20.0, OperationStatus::COMPLETED],
+            [4,  '-28 days',   60,  60,   32.0, OperationStatus::COMPLETED],
+            [5,  '+7 days',    20, null,   null, OperationStatus::PENDING],
+            [6,  '+7 days',    20, null,   null, OperationStatus::PENDING],
+            [7,  '+8 days',    20, null,   null, OperationStatus::PENDING],
+            [8,  '+9 days',    20, null,   null, OperationStatus::PENDING],
+            [9,  '-15 days',   30,  30,   13.0, OperationStatus::COMPLETED],
+            [9,  '+3 days',    30, null,   null, OperationStatus::IN_PROGRESS],
+            [10, '-14 days',   30,  30,   24.0, OperationStatus::COMPLETED],
+            [10, '+3 days',    30, null,   null, OperationStatus::IN_PROGRESS],
+            [11, '-14 days',   30,  30,    7.0, OperationStatus::COMPLETED],
+            [11, '+4 days',    30, null,   null, OperationStatus::IN_PROGRESS],
+            [13, '+14 days',   50, null,   null, OperationStatus::PENDING],
         ];
 
-        foreach ($data as [$opIdx, $dateOffset, $qty, $status]) {
-            $f = (new Forecast())
+        foreach ($data as [$opIdx, $dateOffset, $plannedQty, $actualQty, $actualDuration, $status]) {
+            $o = (new ProductionOrder())
                 ->setOperation($operations[$opIdx])
                 ->setPlannedDate(new \DateTime($dateOffset))
-                ->setPlannedQuantity($qty)
+                ->setPlannedQuantity($plannedQty)
+                ->setActualQuantity($actualQty)
+                ->setActualDuration($actualDuration)
                 ->setStatus($status);
-            $manager->persist($f);
-        }
-    }
-
-    private function loadCompletions(ObjectManager $manager, array $operations): void
-    {
-        $data = [
-            // operation index, date,        actualQty, actualDuration
-            [0,  '-30 days',   50,  28.0],
-            [1,  '-30 days',   50,  52.0],
-            [2,  '-29 days',   50,  38.0],
-            [3,  '-28 days',   60,  20.0],
-            [4,  '-28 days',   60,  32.0],
-            [9,  '-15 days',   30,  13.0],
-            [10, '-14 days',   30,  24.0],
-            [11, '-14 days',   30,   7.0],
-        ];
-
-        foreach ($data as [$opIdx, $dateOffset, $qty, $duration]) {
-            $c = (new Completion())
-                ->setOperation($operations[$opIdx])
-                ->setDate(new \DateTime($dateOffset))
-                ->setActualQuantity($qty)
-                ->setActualDuration($duration);
-            $manager->persist($c);
+            $manager->persist($o);
         }
     }
 }

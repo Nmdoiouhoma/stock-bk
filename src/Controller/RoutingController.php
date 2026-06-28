@@ -270,7 +270,7 @@ final class RoutingController extends AbstractController
         $operation = new Operation();
         $operation->setLabel(trim($data['label']));
         $operation->setUnitTime((float) $data['unitTime']);
-        $operation->setRouting($routing);
+        $operation->addRouting($routing);
         $operation->setWorkstation($workstation);
         $operation->setMachine($machine);
         $operation->setRank($rank);
@@ -285,35 +285,82 @@ final class RoutingController extends AbstractController
 
         // Return similar payload as OperationController::toArray
         return $this->json([
-            'id' => $operation->getId(),
-            'rank' => $operation->getRank(),
-            'label' => $operation->getLabel(),
+            'id'       => $operation->getId(),
+            'rank'     => $operation->getRank(),
+            'label'    => $operation->getLabel(),
             'unitTime' => $operation->getUnitTime(),
-            'routing' => [
-                'id' => $routing->getId(),
+            'routings' => [[
+                'id'        => $routing->getId(),
                 'reference' => $routing->getReference(),
-                'label' => $routing->getLabel(),
-            ],
+                'label'     => $routing->getLabel(),
+            ]],
             'workstation' => $operation->getWorkstation() ? [
-                'id' => $operation->getWorkstation()->getId(),
+                'id'    => $operation->getWorkstation()->getId(),
                 'label' => $operation->getWorkstation()->getLabel() ?? null,
             ] : null,
             'machine' => $operation->getMachine() ? [
-                'id' => $operation->getMachine()->getId(),
+                'id'    => $operation->getMachine()->getId(),
                 'label' => $operation->getMachine()->getLabel() ?? null,
             ] : null,
         ], Response::HTTP_CREATED);
     }
+    #[Route('/{id}/operations/{opId}', name: 'routing_operation_add', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function addOperation(
+        Routing $routing,
+        int $opId,
+        OperationRepository $operationRepository,
+        EntityManagerInterface $em
+    ): JsonResponse {
+        $operation = $operationRepository->find($opId);
+        if ($operation === null) {
+            return $this->json(['error' => 'Opération introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($operation->getRoutings()->contains($routing)) {
+            return $this->json(['error' => 'Cette opération est déjà associée à cette gamme.'], Response::HTTP_CONFLICT);
+        }
+
+        $operation->addRouting($routing);
+        $em->flush();
+
+        return $this->json($this->toArray($routing), Response::HTTP_OK);
+    }
+
+    #[Route('/{id}/operations/{opId}', name: 'routing_operation_remove', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
+    public function removeOperation(
+        Routing $routing,
+        int $opId,
+        OperationRepository $operationRepository,
+        EntityManagerInterface $em
+    ): JsonResponse {
+        $operation = $operationRepository->find($opId);
+        if ($operation === null) {
+            return $this->json(['error' => 'Opération introuvable.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$operation->getRoutings()->contains($routing)) {
+            return $this->json(['error' => 'Cette opération n\'est pas associée à cette gamme.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $operation->removeRouting($routing);
+        $em->flush();
+
+        return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
     private function toArray(Routing $routing): array
     {
         $operations = $routing->getOperations()->toArray();
         usort($operations, fn(Operation $a, Operation $b) => $a->getRank() <=> $b->getRank());
 
         return [
-            'id'         => $routing->getId(),
-            'reference'  => $routing->getReference(),
-            'label'      => $routing->getLabel(),
-            'part'       => $routing->getPart() ? [
+            'id'              => $routing->getId(),
+            'reference'       => $routing->getReference(),
+            'label'           => $routing->getLabel(),
+            'operationsCount' => $routing->getOperations()->count(),
+            'part'            => $routing->getPart() ? [
                 'id'        => $routing->getPart()->getId(),
                 'reference' => $routing->getPart()->getReference(),
                 'label'     => $routing->getPart()->getLabel(),

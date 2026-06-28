@@ -29,7 +29,7 @@ class Routing
     #[ORM\JoinColumn(nullable: false)]
     private ?User $supervisor = null;
 
-    #[ORM\OneToMany(mappedBy: 'routing', targetEntity: Operation::class)]
+    #[ORM\ManyToMany(targetEntity: Operation::class, mappedBy: 'routings')]
     private Collection $operations;
 
     public function __construct()

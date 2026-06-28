@@ -24,9 +24,9 @@ class Operation
     #[ORM\Column(type: 'float')]
     private float $unitTime = 0.0;
 
-    #[ORM\ManyToOne(inversedBy: 'operations')]
-    #[ORM\JoinColumn(nullable: false)]
-    private ?Routing $routing = null;
+    #[ORM\ManyToMany(targetEntity: Routing::class, inversedBy: 'operations')]
+    #[ORM\JoinTable(name: 'operation_routing')]
+    private Collection $routings;
 
     #[ORM\ManyToOne(inversedBy: 'operations')]
     #[ORM\JoinColumn(nullable: false)]
@@ -36,16 +36,13 @@ class Operation
     #[ORM\JoinColumn(nullable: true)]
     private ?Machine $machine = null;
 
-    #[ORM\OneToMany(mappedBy: 'operation', targetEntity: Completion::class)]
-    private Collection $completions;
-
-    #[ORM\OneToMany(mappedBy: 'operation', targetEntity: Forecast::class)]
-    private Collection $forecasts;
+    #[ORM\OneToMany(mappedBy: 'operation', targetEntity: ProductionOrder::class)]
+    private Collection $productionOrders;
 
     public function __construct()
     {
-        $this->completions = new ArrayCollection();
-        $this->forecasts = new ArrayCollection();
+        $this->routings       = new ArrayCollection();
+        $this->productionOrders = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -89,14 +86,26 @@ class Operation
         return $this;
     }
 
-    public function getRouting(): ?Routing
+    /**
+     * @return Collection<int, Routing>
+     */
+    public function getRoutings(): Collection
     {
-        return $this->routing;
+        return $this->routings;
     }
 
-    public function setRouting(?Routing $routing): static
+    public function addRouting(Routing $routing): static
     {
-        $this->routing = $routing;
+        if (!$this->routings->contains($routing)) {
+            $this->routings->add($routing);
+        }
+
+        return $this;
+    }
+
+    public function removeRouting(Routing $routing): static
+    {
+        $this->routings->removeElement($routing);
 
         return $this;
     }
@@ -126,18 +135,10 @@ class Operation
     }
 
     /**
-     * @return Collection<int, Completion>
+     * @return Collection<int, ProductionOrder>
      */
-    public function getCompletions(): Collection
+    public function getProductionOrders(): Collection
     {
-        return $this->completions;
-    }
-
-    /**
-     * @return Collection<int, Forecast>
-     */
-    public function getForecasts(): Collection
-    {
-        return $this->forecasts;
+        return $this->productionOrders;
     }
 }

@@ -157,7 +157,7 @@ class MachineControllerTest extends WebTestCase
             ->setRank(1)
             ->setLabel('Test Operation')
             ->setUnitTime(1.0)
-            ->setRouting($routing)
+            ->addRouting($routing)
             ->setWorkstation($workstation)
             ->setMachine($machine);
         $this->em->persist($op);
@@ -214,7 +214,17 @@ class MachineControllerTest extends WebTestCase
     {
         $conn = $this->em->getConnection();
         $conn->executeStatement(
-            'DELETE FROM operation WHERE routing_id IN (SELECT id FROM routing WHERE reference LIKE ?)',
+            'DELETE FROM production_order WHERE operation_id IN (
+                SELECT operation_id FROM operation_routing
+                WHERE routing_id IN (SELECT id FROM routing WHERE reference LIKE ?)
+            )',
+            [self::RT_PREFIX . '%']
+        );
+        $conn->executeStatement(
+            'DELETE FROM operation WHERE id IN (
+                SELECT operation_id FROM operation_routing
+                WHERE routing_id IN (SELECT id FROM routing WHERE reference LIKE ?)
+            )',
             [self::RT_PREFIX . '%']
         );
         $this->em->createQuery(

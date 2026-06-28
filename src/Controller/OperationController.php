@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\Operation;
+use App\Entity\Routing;
 use App\Repository\MachineRepository;
 use App\Repository\OperationRepository;
 use App\Repository\RoutingRepository;
@@ -13,32 +14,30 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/operations')]
 final class OperationController extends AbstractController
 {
     #[Route('', name: 'operation_index', methods: ['GET'])]
+    #[IsGranted('ROLE_WORKER')]
     public function index(OperationRepository $operationRepository): JsonResponse
     {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
         $operations = $operationRepository->findBy([], ['rank' => 'ASC']);
 
         return $this->json(array_map(fn(Operation $o) => $this->toArray($o), $operations));
     }
 
     #[Route('/{id}', name: 'operation_show', methods: ['GET'])]
+    #[IsGranted('ROLE_WORKER')]
     public function show(Operation $operation): JsonResponse
     {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR') || $this->isGranted('ROLE_WORKER'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
         return $this->json($this->toArray($operation));
     }
 
     #[Route('', name: 'operation_create', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function create(
         Request $request,
         EntityManagerInterface $em,
@@ -48,9 +47,6 @@ final class OperationController extends AbstractController
         OperationRepository $operationRepository,
         MachineRepository $machineRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -65,13 +61,20 @@ final class OperationController extends AbstractController
             return $this->json(['error' => 'Le champ "unitTime" est obligatoire et doit être un nombre.'], Response::HTTP_BAD_REQUEST);
         }
 
-        if (!isset($data['routingId']) || !is_int($data['routingId'])) {
-            return $this->json(['error' => 'Le champ "routingId" est obligatoire et doit être un entier.'], Response::HTTP_BAD_REQUEST);
+        if (!isset($data['routingIds']) || !is_array($data['routingIds']) || count($data['routingIds']) === 0) {
+            return $this->json(['error' => 'Le champ "routingIds" est obligatoire et doit être un tableau non vide d\'entiers.'], Response::HTTP_BAD_REQUEST);
         }
 
-        $routing = $routingRepository->find($data['routingId']);
-        if ($routing === null) {
-            return $this->json(['error' => 'La gamme spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
+        $routings = [];
+        foreach ($data['routingIds'] as $routingId) {
+            if (!is_int($routingId)) {
+                return $this->json(['error' => 'Chaque élément de "routingIds" doit être un entier.'], Response::HTTP_BAD_REQUEST);
+            }
+            $routing = $routingRepository->find($routingId);
+            if ($routing === null) {
+                return $this->json(['error' => "La gamme $routingId n'existe pas."], Response::HTTP_NOT_FOUND);
+            }
+            $routings[] = $routing;
         }
 
         if (!isset($data['workstationId']) || !is_int($data['workstationId'])) {
@@ -92,16 +95,23 @@ final class OperationController extends AbstractController
             return $this->json(['error' => 'La machine spécifiée n\'existe pas.'], Response::HTTP_NOT_FOUND);
         }
 
-        $max = $operationRepository->getMaxRankForRouting($routing);
+        if (!$workstation->getMachines()->contains($machine)) {
+            return $this->json(['error' => 'Cette machine n\'est pas compatible avec ce poste de travail.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $max  = $operationRepository->getMaxRankForRouting($routings[0]);
         $rank = ($max === null) ? 1 : ($max + 1);
 
         $operation = new Operation();
         $operation->setLabel(trim($data['label']));
         $operation->setUnitTime((float) $data['unitTime']);
-        $operation->setRouting($routing);
         $operation->setWorkstation($workstation);
         $operation->setMachine($machine);
         $operation->setRank($rank);
+
+        foreach ($routings as $routing) {
+            $operation->addRouting($routing);
+        }
 
         $errors = $validator->validate($operation);
         if (count($errors) > 0) {
@@ -115,6 +125,7 @@ final class OperationController extends AbstractController
     }
 
     #[Route('/{id}', name: 'operation_update', methods: ['PUT'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function update(
         Operation $operation,
         Request $request,
@@ -123,9 +134,6 @@ final class OperationController extends AbstractController
         WorkstationRepository $workstationRepository,
         MachineRepository $machineRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
         $data = json_decode($request->getContent(), true);
 
         if (!is_array($data)) {
@@ -172,6 +180,11 @@ final class OperationController extends AbstractController
             }
         }
 
+        $currentMachine = $operation->getMachine();
+        if ($currentMachine !== null && !$operation->getWorkstation()->getMachines()->contains($currentMachine)) {
+            return $this->json(['error' => 'Cette machine n\'est pas compatible avec ce poste de travail.'], Response::HTTP_BAD_REQUEST);
+        }
+
         $errors = $validator->validate($operation);
         if (count($errors) > 0) {
             return $this->json($this->formatErrors($errors), Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -183,10 +196,11 @@ final class OperationController extends AbstractController
     }
 
     #[Route('/{id}', name: 'operation_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function delete(Operation $operation, EntityManagerInterface $em): JsonResponse
     {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
+        if (!$operation->getProductionOrders()->isEmpty()) {
+            return $this->json(['error' => 'Cette opération a des ordres de fabrication et ne peut pas être supprimée.'], Response::HTTP_CONFLICT);
         }
 
         $em->remove($operation);
@@ -196,23 +210,19 @@ final class OperationController extends AbstractController
     }
 
     #[Route('/{id}/move', name: 'operation_move', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPERVISOR')]
     public function move(
         Operation $operation,
         Request $request,
         EntityManagerInterface $em,
         OperationRepository $operationRepository
     ): JsonResponse {
-        if (!($this->isGranted('ROLE_ADMIN') || $this->isGranted('ROLE_SUPERVISOR'))) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Access Denied.');
-        }
         $data = json_decode($request->getContent(), true);
         if (!is_array($data) || !isset($data['direction']) || !in_array($data['direction'], ['up', 'down'], true)) {
             return $this->json(['error' => 'direction manquante ou invalide ("up" ou "down")'], Response::HTTP_BAD_REQUEST);
         }
 
-        $direction = $data['direction'];
-
-        $neighbor = $operationRepository->findNeighbor($operation, $direction);
+        $neighbor = $operationRepository->findNeighbor($operation, $data['direction']);
 
         if ($neighbor === null) {
             return $this->json(['error' => 'Impossible de déplacer dans cette direction.'], Response::HTTP_BAD_REQUEST);
@@ -230,21 +240,21 @@ final class OperationController extends AbstractController
     private function toArray(Operation $o): array
     {
         return [
-            'id' => $o->getId(),
-            'rank' => $o->getRank(),
-            'label' => $o->getLabel(),
-            'unitTime' => $o->getUnitTime(),
-            'routing' => $o->getRouting() ? [
-                'id' => $o->getRouting()->getId(),
-                'reference' => $o->getRouting()->getReference(),
-                'label' => $o->getRouting()->getLabel(),
-            ] : null,
+            'id'          => $o->getId(),
+            'rank'        => $o->getRank(),
+            'label'       => $o->getLabel(),
+            'unitTime'    => $o->getUnitTime(),
+            'routings'    => array_map(fn(Routing $r) => [
+                'id'        => $r->getId(),
+                'reference' => $r->getReference(),
+                'label'     => $r->getLabel(),
+            ], $o->getRoutings()->toArray()),
             'workstation' => $o->getWorkstation() ? [
-                'id' => $o->getWorkstation()->getId(),
+                'id'    => $o->getWorkstation()->getId(),
                 'label' => $o->getWorkstation()->getLabel() ?? null,
             ] : null,
-            'machine' => $o->getMachine() ? [
-                'id' => $o->getMachine()->getId(),
+            'machine'     => $o->getMachine() ? [
+                'id'    => $o->getMachine()->getId(),
                 'label' => $o->getMachine()->getLabel() ?? null,
             ] : null,
         ];
@@ -255,7 +265,7 @@ final class OperationController extends AbstractController
         $formatted = [];
         foreach ($errors as $error) {
             $formatted[] = [
-                'field' => $error->getPropertyPath(),
+                'field'   => $error->getPropertyPath(),
                 'message' => $error->getMessage(),
             ];
         }
