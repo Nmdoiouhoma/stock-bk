@@ -10,3 +10,4 @@ enum Role: string
     case Seller = 'seller';
     case Supervisor = 'supervisor';
 }
+ 
