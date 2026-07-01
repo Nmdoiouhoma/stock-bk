@@ -116,28 +116,21 @@ class QuoteController extends AbstractController
         Quote $quote,
         Request $request,
         EntityManagerInterface $em,
-        UserRepository $userRepository,
     ): JsonResponse {
         if (!$this->isGranted('ROLE_SELLER') && !$this->isGranted('ROLE_ADMIN')) {
             throw $this->createAccessDeniedException();
         }
 
-        $data = json_decode($request->getContent(), true);
+        if ($quote->getStatus() !== QuoteStatus::PENDING) {
+            return $this->json(
+                ['error' => 'Seuls les devis en statut "pending" peuvent être modifiés.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
 
+        $data = json_decode($request->getContent(), true);
         if (!is_array($data)) {
             return $this->json(['error' => 'JSON invalide'], Response::HTTP_BAD_REQUEST);
-        }
-
-        if (array_key_exists('reference', $data)) {
-            $quote->setReference((string) $data['reference']);
-        }
-
-        if (array_key_exists('clientId', $data)) {
-            $client = $userRepository->find((int) $data['clientId']);
-            if ($client === null) {
-                return $this->json(['error' => 'Client introuvable'], Response::HTTP_NOT_FOUND);
-            }
-            $quote->setClient($client);
         }
 
         if (array_key_exists('deadline', $data)) {
@@ -157,10 +150,6 @@ class QuoteController extends AbstractController
                 );
             }
             $quote->setStatus($status);
-        }
-
-        if (array_key_exists('totalAmount', $data)) {
-            $quote->setTotalAmount((string) $data['totalAmount']);
         }
 
         $em->flush();
@@ -218,6 +207,7 @@ class QuoteController extends AbstractController
                 ],
                 'quantity'  => $line->getQuantity(),
                 'unitPrice' => $line->getUnitPrice(),
+                'inOrder'   => !$line->getOrders()->isEmpty(),
             ])->toArray(),
         ];
     }

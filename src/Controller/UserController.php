@@ -17,9 +17,12 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class UserController extends AbstractController
 {
     #[Route('/api/clients', name: 'client_index', methods: ['GET'])]
-    #[IsGranted('ROLE_ADMIN')]
     public function clients(UserRepository $repository): JsonResponse
     {
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_SELLER')) {
+            throw $this->createAccessDeniedException();
+        }
+
         $clients = $repository->findBy(['role' => Role::Customer]);
 
         return $this->json(array_map(fn(User $u) => $this->toArray($u), $clients));

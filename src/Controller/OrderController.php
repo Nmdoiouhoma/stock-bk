@@ -3,10 +3,11 @@
 namespace App\Controller;
 
 use App\Entity\Order;
+use App\Entity\QuoteLine;
 use App\Enum\OrderStatus;
 use App\Enum\QuoteStatus;
 use App\Repository\OrderRepository;
-use App\Repository\QuoteRepository;
+use App\Repository\QuoteLineRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -17,8 +18,6 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/orders')]
 class OrderController extends AbstractController
 {
-    private const VALID_QUOTE_STATUSES = [QuoteStatus::PENDING, QuoteStatus::ACCEPTED];
-
     #[Route('', name: 'order_index', methods: ['GET'])]
     public function index(OrderRepository $repository): JsonResponse
     {
@@ -43,7 +42,7 @@ class OrderController extends AbstractController
     public function create(
         Request $request,
         EntityManagerInterface $em,
-        QuoteRepository $quoteRepository,
+        QuoteLineRepository $quoteLineRepository,
     ): JsonResponse {
         if (!$this->isGranted('ROLE_SELLER') && !$this->isGranted('ROLE_ADMIN')) {
             throw $this->createAccessDeniedException();
@@ -51,40 +50,100 @@ class OrderController extends AbstractController
 
         $data = json_decode($request->getContent(), true);
 
-        if (!is_array($data) || !isset($data['quoteId'])) {
-            return $this->json(['error' => 'Champ manquant : quoteId'], Response::HTTP_BAD_REQUEST);
+        if (!is_array($data) || !isset($data['quoteLineIds']) || !is_array($data['quoteLineIds']) || empty($data['quoteLineIds'])) {
+            return $this->json(['error' => 'Champ requis : quoteLineIds (tableau non vide d\'identifiants)'], Response::HTTP_BAD_REQUEST);
         }
 
-        $quote = $quoteRepository->find((int) $data['quoteId']);
-        if ($quote === null) {
-            return $this->json(['error' => 'Devis introuvable'], Response::HTTP_NOT_FOUND);
+        $ids = array_unique(array_map('intval', $data['quoteLineIds']));
+        /** @var QuoteLine[] $quoteLines */
+        $quoteLines = [];
+
+        foreach ($ids as $id) {
+            $line = $quoteLineRepository->find($id);
+            if ($line === null) {
+                return $this->json(['error' => "Ligne de devis introuvable : $id"], Response::HTTP_NOT_FOUND);
+            }
+            $quoteLines[] = $line;
         }
 
-        if (!in_array($quote->getStatus(), self::VALID_QUOTE_STATUSES, true)) {
-            return $this->json(
-                ['error' => 'Le devis doit être en statut "pending" ou "accepted" pour créer une commande.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY
-            );
+        // All QuoteLines must belong to the same client
+        $clientId = null;
+        foreach ($quoteLines as $line) {
+            $lineClientId = $line->getQuote()->getClient()->getId();
+            if ($clientId === null) {
+                $clientId = $lineClientId;
+            } elseif ($clientId !== $lineClientId) {
+                return $this->json(
+                    ['error' => 'Toutes les lignes de devis doivent appartenir au même client'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY
+                );
+            }
         }
 
-        if ($quote->getLines()->isEmpty()) {
-            return $this->json(
-                ['error' => 'Impossible de créer une commande depuis un devis sans lignes.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY
-            );
+        // Order date must not be past the deadline of any associated quote
+        $today = new \DateTimeImmutable('today');
+        foreach ($quoteLines as $line) {
+            $deadline = $line->getQuote()->getDeadline();
+            if ($deadline !== null && $today > $deadline) {
+                return $this->json(
+                    ['error' => 'La date de commande dépasse le délai du devis #' . $line->getQuote()->getId()],
+                    Response::HTTP_UNPROCESSABLE_ENTITY
+                );
+            }
         }
+
+        // A QuoteLine can only be ordered once
+        foreach ($quoteLines as $line) {
+            if (!$line->getOrders()->isEmpty()) {
+                return $this->json(
+                    ['error' => 'La ligne de devis #' . $line->getId() . ' est déjà associée à une commande'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY
+                );
+            }
+        }
+
+        // Total = sum of (unitPrice * quantity) for each QuoteLine
+        $totalAmount = 0.0;
+        foreach ($quoteLines as $line) {
+            $totalAmount += (float) ($line->getQuantity() ?? 0) * (float) ($line->getUnitPrice() ?? '0');
+        }
+        $totalAmount = number_format($totalAmount, 2, '.', '');
 
         $order = new Order();
-        $order->setQuote($quote);
         $order->setCreatedAt(new \DateTimeImmutable());
         $order->setStatus(OrderStatus::PENDING);
+        $order->setTotalAmount($totalAmount);
+        foreach ($quoteLines as $line) {
+            $order->addLine($line);
+        }
+        $em->persist($order);
 
-        foreach ($quote->getLines() as $quoteLine) {
-            $order->addLine($quoteLine);
+        // Mark a quote as "accepted" when all its lines are now ordered
+        $affectedQuotes = [];
+        foreach ($quoteLines as $line) {
+            $quote = $line->getQuote();
+            $affectedQuotes[$quote->getId()] = $quote;
+        }
+        foreach ($affectedQuotes as $quote) {
+            $allOrdered = true;
+            foreach ($quote->getLines() as $quoteLine) {
+                $alreadyOrdered = !$quoteLine->getOrders()->isEmpty();
+                $inCurrentBatch = in_array($quoteLine, $quoteLines, true);
+                if (!$alreadyOrdered && !$inCurrentBatch) {
+                    $allOrdered = false;
+                    break;
+                }
+            }
+            if ($allOrdered) {
+                $quote->setStatus(QuoteStatus::ACCEPTED);
+            }
         }
 
-        $em->persist($order);
-        $em->flush();
+        try {
+            $em->flush();
+        } catch (\Exception $e) {
+            return $this->json(['error' => 'Erreur base de données : ' . $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
         return $this->json($this->toArray($order), Response::HTTP_CREATED);
     }
@@ -116,19 +175,22 @@ class OrderController extends AbstractController
         return $this->json($this->toArray($order));
     }
 
+    #[Route('/{id}', name: 'order_delete', methods: ['DELETE'])]
+    public function delete(): JsonResponse
+    {
+        return $this->json(['error' => 'La suppression d\'une commande n\'est pas autorisée'], Response::HTTP_METHOD_NOT_ALLOWED);
+    }
+
     private function toArray(Order $order): array
     {
         return [
-            'id'        => $order->getId(),
-            'createdAt' => $order->getCreatedAt()?->format('Y-m-d'),
-            'status'    => $order->getStatus()?->value,
-            'quote'     => [
-                'id'          => $order->getQuote()?->getId(),
-                'reference'   => $order->getQuote()?->getReference(),
-                'totalAmount' => $order->getQuote()?->getTotalAmount(),
-            ],
-            'lines'     => $order->getLines()->map(fn(\App\Entity\QuoteLine $l) => [
+            'id'          => $order->getId(),
+            'createdAt'   => $order->getCreatedAt()?->format('Y-m-d'),
+            'status'      => $order->getStatus()?->value,
+            'totalAmount' => $order->getTotalAmount(),
+            'lines'       => $order->getLines()->map(fn(QuoteLine $l) => [
                 'id'        => $l->getId(),
+                'quoteId'   => $l->getQuote()?->getId(),
                 'part'      => [
                     'id'        => $l->getPart()?->getId(),
                     'reference' => $l->getPart()?->getReference(),

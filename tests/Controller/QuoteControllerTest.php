@@ -46,6 +46,11 @@ class QuoteControllerTest extends WebTestCase
         return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE1, Quote::class)->getId();
     }
 
+    private function quote2Id(): int
+    {
+        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE2, Quote::class)->getId();
+    }
+
     private function quote4Id(): int
     {
         return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE4, Quote::class)->getId();
@@ -225,23 +230,54 @@ class QuoteControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
-    public function testSellerCanUpdateQuoteFields(): void
+    public function testSellerCanUpdateDeadlineAndStatus(): void
     {
         $this->client->request('PUT', '/api/quotes/' . $this->quote1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'status'      => 'accepted',
-            'totalAmount' => '999.00',
+            'deadline' => '2099-01-01',
+            'status'   => 'cancelled',
         ]));
 
         $this->assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertSame('accepted', $data['status']);
-        $this->assertSame('999.00', $data['totalAmount']);
+        $this->assertSame('cancelled', $data['status']);
+        $this->assertSame('2099-01-01', $data['deadline']);
+    }
+
+    public function testReadOnlyFieldsAreIgnoredOnUpdate(): void
+    {
+        // reference, totalAmount sont ignorés — le totalAmount reste calculé depuis les lignes
+        $this->client->request('PUT', '/api/quotes/' . $this->quote1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'totalAmount' => '999.00',
+            'reference'   => 'SHOULD-NOT-CHANGE',
+        ]));
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertSame('QTEST-DEV-001', $data['reference']); // inchangé
+        $this->assertNotSame('999.00', $data['totalAmount']);    // ignoré
+    }
+
+    public function testCannotUpdateNonPendingQuote(): void
+    {
+        // quote2 est ACCEPTED
+        $this->client->request('PUT', '/api/quotes/' . $this->quote2Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'deadline' => '2099-01-01',
+        ]));
+        $this->assertResponseStatusCodeSame(422);
     }
 
     public function testUpdateWithInvalidStatusReturns400(): void
     {
         $this->client->request('PUT', '/api/quotes/' . $this->quote1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'status' => 'invalid_status',
+        ]));
+        $this->assertResponseStatusCodeSame(400);
+    }
+
+    public function testUpdateWithInvalidDeadlineReturns400(): void
+    {
+        $this->client->request('PUT', '/api/quotes/' . $this->quote1Id(), [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'deadline' => 'not-a-date',
         ]));
         $this->assertResponseStatusCodeSame(400);
     }

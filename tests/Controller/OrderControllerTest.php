@@ -4,6 +4,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\Order;
 use App\Entity\Quote;
+use App\Entity\QuoteLine;
 use App\Tests\DataFixtures\QuoteTestFixtures;
 use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
 use Doctrine\Common\DataFixtures\Purger\ORMPurger;
@@ -51,19 +52,29 @@ class OrderControllerTest extends WebTestCase
         return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE2, Quote::class)->getId();
     }
 
-    private function quote3Id(): int
-    {
-        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE3, Quote::class)->getId();
-    }
-
-    private function quote5Id(): int
-    {
-        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE5, Quote::class)->getId();
-    }
-
     private function order1Id(): int
     {
         return $this->fixtures->getReference(QuoteTestFixtures::REF_ORDER1, Order::class)->getId();
+    }
+
+    private function quote1LineId(): int
+    {
+        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE1_LINE, QuoteLine::class)->getId();
+    }
+
+    private function quote2LineId(): int
+    {
+        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE2_LINE, QuoteLine::class)->getId();
+    }
+
+    private function quote3LineId(): int
+    {
+        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE3_LINE, QuoteLine::class)->getId();
+    }
+
+    private function quote4LineId(): int
+    {
+        return $this->fixtures->getReference(QuoteTestFixtures::REF_QUOTE4_LINE, QuoteLine::class)->getId();
     }
 
     // ── Accès ─────────────────────────────────────────────────
@@ -86,7 +97,7 @@ class OrderControllerTest extends WebTestCase
     {
         $this->loginAs(QuoteTestFixtures::CUSTOMER1_EMAIL);
         $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote1Id(),
+            'quoteLineIds' => [$this->quote1LineId()],
         ]));
         $this->assertResponseStatusCodeSame(403);
     }
@@ -111,7 +122,7 @@ class OrderControllerTest extends WebTestCase
 
         $data = json_decode($this->client->getResponse()->getContent(), true);
         $this->assertSame($this->order1Id(), $data['id']);
-        $this->assertArrayHasKey('quote', $data);
+        $this->assertArrayHasKey('totalAmount', $data);
         $this->assertArrayHasKey('lines', $data);
         $this->assertIsArray($data['lines']);
     }
@@ -121,7 +132,7 @@ class OrderControllerTest extends WebTestCase
         $this->client->request('GET', '/api/orders/' . $this->order1Id());
         $data = json_decode($this->client->getResponse()->getContent(), true);
 
-        // order1 vient de quote2 (1 ligne : part1, qty=1)
+        // order1 contient quote2Line (part1, qty=1, unitPrice=100.00)
         $this->assertCount(1, $data['lines']);
         $this->assertSame('100.00', $data['lines'][0]['unitPrice']);
         $this->assertSame(1, $data['lines'][0]['quantity']);
@@ -135,72 +146,91 @@ class OrderControllerTest extends WebTestCase
 
     // ── POST /api/orders ──────────────────────────────────────
 
-    public function testSellerCanCreateOrderFromPendingQuote(): void
+    public function testSellerCanCreateOrderFromQuoteLines(): void
     {
         $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote1Id(),
+            'quoteLineIds' => [$this->quote1LineId()],
         ]));
 
         $this->assertResponseStatusCodeSame(201);
         $data = json_decode($this->client->getResponse()->getContent(), true);
         $this->assertSame('pending', $data['status']);
-        $this->assertSame($this->quote1Id(), $data['quote']['id']);
-        $this->assertCount(1, $data['lines']); // quote1 a 1 ligne
+        $this->assertArrayHasKey('totalAmount', $data);
+        $this->assertCount(1, $data['lines']);
+        $this->assertSame($this->quote1LineId(), $data['lines'][0]['id']);
     }
 
-    public function testSellerCanCreateOrderFromAcceptedQuote(): void
+    public function testTotalAmountIsCalculatedFromQuoteLines(): void
     {
-        // Un deuxième order depuis quote2 (déjà utilisée en fixture — pas de contrainte unique)
+        // quote1Line: qty=2, unitPrice=100.00 → total=200.00
         $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote2Id(),
+            'quoteLineIds' => [$this->quote1LineId()],
+        ]));
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $this->assertSame('200.00', $data['totalAmount']);
+    }
+
+    public function testQuoteBecomesAcceptedWhenAllLinesOrdered(): void
+    {
+        // quote1 has a single line (quote1Line) — after ordering it, quote1 should become "accepted"
+        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'quoteLineIds' => [$this->quote1LineId()],
         ]));
         $this->assertResponseStatusCodeSame(201);
+
+        $this->em->clear();
+        $quote1 = $this->em->find(Quote::class, $this->quote1Id());
+        $this->assertSame('accepted', $quote1->getStatus()->value);
     }
 
-    public function testOrderLinesAreCopiedFromQuote(): void
-    {
-        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote1Id(),
-        ]));
-
-        $order = json_decode($this->client->getResponse()->getContent(), true);
-
-        $this->client->request('GET', '/api/quotes/' . $this->quote1Id() . '/lines');
-        $quoteLines = json_decode($this->client->getResponse()->getContent(), true);
-
-        $this->assertCount(count($quoteLines), $order['lines']);
-        $this->assertSame($quoteLines[0]['unitPrice'], $order['lines'][0]['unitPrice']);
-        $this->assertSame($quoteLines[0]['quantity'],  $order['lines'][0]['quantity']);
-    }
-
-    public function testCannotCreateOrderFromExpiredQuote(): void
-    {
-        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote3Id(),
-        ]));
-        $this->assertResponseStatusCodeSame(422);
-    }
-
-    public function testCannotCreateOrderFromQuoteWithNoLines(): void
-    {
-        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => $this->quote5Id(),
-        ]));
-        $this->assertResponseStatusCodeSame(422);
-    }
-
-    public function testCreateWithMissingQuoteIdReturns400(): void
+    public function testCreateWithMissingQuoteLineIdsReturns400(): void
     {
         $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([]));
         $this->assertResponseStatusCodeSame(400);
     }
 
-    public function testCreateWithUnknownQuoteReturns404(): void
+    public function testCreateWithEmptyQuoteLineIdsReturns400(): void
     {
         $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
-            'quoteId' => 999999,
+            'quoteLineIds' => [],
+        ]));
+        $this->assertResponseStatusCodeSame(400);
+    }
+
+    public function testCreateWithUnknownQuoteLineIdReturns404(): void
+    {
+        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'quoteLineIds' => [999999],
         ]));
         $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testCannotCreateOrderFromExpiredQuoteLine(): void
+    {
+        // quote3 has a deadline in the past (-5 days)
+        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'quoteLineIds' => [$this->quote3LineId()],
+        ]));
+        $this->assertResponseStatusCodeSame(422);
+    }
+
+    public function testCannotCreateOrderFromLineAlreadyInOrder(): void
+    {
+        // quote2Line is already in order1 (fixture)
+        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'quoteLineIds' => [$this->quote2LineId()],
+        ]));
+        $this->assertResponseStatusCodeSame(422);
+    }
+
+    public function testCannotCreateOrderFromLinesOfDifferentClients(): void
+    {
+        // quote1Line belongs to customer1, quote4Line belongs to customer2
+        $this->client->request('POST', '/api/orders', [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
+            'quoteLineIds' => [$this->quote1LineId(), $this->quote4LineId()],
+        ]));
+        $this->assertResponseStatusCodeSame(422);
     }
 
     // ── PUT /api/orders/{id} ──────────────────────────────────
@@ -239,9 +269,9 @@ class OrderControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
-    // ── DELETE absent ─────────────────────────────────────────
+    // ── DELETE ────────────────────────────────────────────────
 
-    public function testDeleteRouteDoesNotExist(): void
+    public function testDeleteRouteReturns405(): void
     {
         $this->client->request('DELETE', '/api/orders/' . $this->order1Id());
         $this->assertResponseStatusCodeSame(405);

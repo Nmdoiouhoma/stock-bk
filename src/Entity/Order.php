@@ -18,11 +18,14 @@ class Order
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'orders')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: true)]
     private ?Quote $quote = null;
 
     #[ORM\Column]
     private ?\DateTimeImmutable $createdAt = null;
+
+    #[ORM\Column(type: 'decimal', precision: 10, scale: 2)]
+    private ?string $totalAmount = null;
 
     #[ORM\Column(type: 'string', enumType: OrderStatus::class)]
     private ?OrderStatus $status = null;
@@ -97,6 +100,18 @@ class Order
     public function removeLine(QuoteLine $line): static
     {
         $this->lines->removeElement($line);
+
+        return $this;
+    }
+
+    public function getTotalAmount(): ?string
+    {
+        return $this->totalAmount;
+    }
+
+    public function setTotalAmount(string $totalAmount): static
+    {
+        $this->totalAmount = $totalAmount;
 
         return $this;
     }
