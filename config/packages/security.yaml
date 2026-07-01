@@ -9,8 +9,9 @@ security:
                 property: email
 
     role_hierarchy:
-        ROLE_ADMIN: [ROLE_SUPERVISOR, ROLE_WORKER]
+        ROLE_ADMIN: [ROLE_SUPERVISOR, ROLE_SELLER, ROLE_WORKER]
         ROLE_SUPERVISOR: [ROLE_WORKER]
+        ROLE_SELLER: [ROLE_WORKER]
 
     firewalls:
         dev:

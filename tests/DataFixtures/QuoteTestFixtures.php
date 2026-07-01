@@ -40,7 +40,9 @@ class QuoteTestFixtures extends Fixture implements FixtureGroupInterface
     public const REF_QUOTE5      = 'qt-quote5';       // customer1, PENDING,   NO LINES
     public const REF_ORDER1      = 'qt-order1';       // from quote2, PENDING
     public const REF_QUOTE1_LINE = 'qt-quote1-line';  // part1, qty=2
-    public const REF_QUOTE2_LINE = 'qt-quote2-line';  // part1, qty=1
+    public const REF_QUOTE2_LINE = 'qt-quote2-line';  // part1, qty=1 — already in order1
+    public const REF_QUOTE3_LINE = 'qt-quote3-line';  // part1, qty=1 — expired quote
+    public const REF_QUOTE4_LINE = 'qt-quote4-line';  // part1, qty=1 — customer2 (different client)
 
     public function __construct(private UserPasswordHasherInterface $hasher) {}
 
@@ -98,11 +100,11 @@ class QuoteTestFixtures extends Fixture implements FixtureGroupInterface
 
         $manager->flush();
 
-        // order1 — from quote2 (accepted), copies its lines
+        // order1 — groups quote2Line (qty=1, unitPrice=100 → total=100)
         $order1 = (new Order())
-            ->setQuote($quote2)
             ->setCreatedAt(new \DateTimeImmutable())
-            ->setStatus(OrderStatus::PENDING);
+            ->setStatus(OrderStatus::PENDING)
+            ->setTotalAmount('100.00');
         foreach ($quote2->getLines() as $ql) {
             $order1->addLine($ql);
         }
@@ -126,6 +128,8 @@ class QuoteTestFixtures extends Fixture implements FixtureGroupInterface
         $this->addReference(self::REF_ORDER1,      $order1);
         $this->addReference(self::REF_QUOTE1_LINE, $quote1Line);
         $this->addReference(self::REF_QUOTE2_LINE, $quote2Line);
+        $this->addReference(self::REF_QUOTE3_LINE, $quote3Line);
+        $this->addReference(self::REF_QUOTE4_LINE, $quote4Line);
     }
 
     private function makeQuote(

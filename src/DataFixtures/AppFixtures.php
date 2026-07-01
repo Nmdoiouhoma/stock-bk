@@ -353,10 +353,17 @@ class AppFixtures extends Fixture
     {
         $acceptedQuote = $quotes[1]; // DEV-2024-002, Lucie, ACCEPTED
 
+        $total = 0.0;
+        foreach ($acceptedQuote->getLines() as $quoteLine) {
+            $total += (float) $quoteLine->getQuantity() * (float) $quoteLine->getUnitPrice();
+        }
+        $total = number_format($total, 2, '.', '');
+
         $order = (new Order())
             ->setQuote($acceptedQuote)
             ->setCreatedAt(new \DateTimeImmutable())
-            ->setStatus(OrderStatus::IN_PROGRESS);
+            ->setStatus(OrderStatus::IN_PROGRESS)
+            ->setTotalAmount($total);
 
         foreach ($acceptedQuote->getLines() as $quoteLine) {
             $order->addLine($quoteLine);

@@ -18,8 +18,6 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/quotes/{id}/lines')]
 class QuoteLineController extends AbstractController
 {
-    private const LOCKED_STATUSES = [QuoteStatus::ACCEPTED, QuoteStatus::EXPIRED];
-
     #[Route('', name: 'quote_line_index', methods: ['GET'])]
     public function index(Quote $quote): JsonResponse
     {
@@ -45,11 +43,8 @@ class QuoteLineController extends AbstractController
             throw $this->createAccessDeniedException();
         }
 
-        if (in_array($quote->getStatus(), self::LOCKED_STATUSES, true)) {
-            return $this->json(
-                ['error' => 'Impossible de modifier un devis accepté ou expiré.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY
-            );
+        if ($error = $this->requirePending($quote)) {
+            return $error;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -90,6 +85,7 @@ class QuoteLineController extends AbstractController
         $line->setUnitPrice((string) $part->getSalePrice());
 
         $quote->addLine($line);
+        $this->recalculateTotalAmount($quote);
         $em->flush();
 
         return $this->json($this->toArray($line), Response::HTTP_CREATED);
@@ -107,16 +103,20 @@ class QuoteLineController extends AbstractController
             throw $this->createAccessDeniedException();
         }
 
-        if (in_array($quote->getStatus(), self::LOCKED_STATUSES, true)) {
-            return $this->json(
-                ['error' => 'Impossible de modifier un devis accepté ou expiré.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY
-            );
+        if ($error = $this->requirePending($quote)) {
+            return $error;
         }
 
         $line = $lineRepository->find($lineId);
         if ($line === null || $line->getQuote() !== $quote) {
             return $this->json(['error' => 'Ligne introuvable dans ce devis.'], Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$line->getOrders()->isEmpty()) {
+            return $this->json(
+                ['error' => 'La quantité d\'une ligne déjà commandée ne peut pas être modifiée.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
         }
 
         $data = json_decode($request->getContent(), true);
@@ -130,6 +130,7 @@ class QuoteLineController extends AbstractController
         }
 
         $line->setQuantity((int) $data['quantity']);
+        $this->recalculateTotalAmount($quote);
         $em->flush();
 
         return $this->json($this->toArray($line));
@@ -146,11 +147,8 @@ class QuoteLineController extends AbstractController
             throw $this->createAccessDeniedException();
         }
 
-        if (in_array($quote->getStatus(), self::LOCKED_STATUSES, true)) {
-            return $this->json(
-                ['error' => 'Impossible de modifier un devis accepté ou expiré.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY
-            );
+        if ($error = $this->requirePending($quote)) {
+            return $error;
         }
 
         $line = $lineRepository->find($lineId);
@@ -158,10 +156,38 @@ class QuoteLineController extends AbstractController
             return $this->json(['error' => 'Ligne introuvable dans ce devis.'], Response::HTTP_NOT_FOUND);
         }
 
+        if (!$line->getOrders()->isEmpty()) {
+            return $this->json(
+                ['error' => 'Une ligne déjà commandée ne peut pas être supprimée.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+
         $quote->removeLine($line);
+        $this->recalculateTotalAmount($quote);
         $em->flush();
 
         return $this->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    private function requirePending(Quote $quote): ?JsonResponse
+    {
+        if ($quote->getStatus() !== QuoteStatus::PENDING) {
+            return $this->json(
+                ['error' => 'Seuls les devis en statut "pending" peuvent être modifiés.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+        return null;
+    }
+
+    private function recalculateTotalAmount(Quote $quote): void
+    {
+        $total = 0.0;
+        foreach ($quote->getLines() as $line) {
+            $total += (float) $line->getQuantity() * (float) $line->getUnitPrice();
+        }
+        $quote->setTotalAmount(number_format($total, 2, '.', ''));
     }
 
     private function toArray(QuoteLine $line): array
